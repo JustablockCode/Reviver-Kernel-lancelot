@@ -168,6 +168,10 @@ config MTK_DX_HDCP_DDP_SUPPORT
 	  Then please make sure CONFIG_MTK_DX_HDCP_DDP_SUPPORT set as Y in xxx_defconfig.mk.
 	  If unsure, set N.
 
+config MTK_MT6382_BDG_BUF7
+        bool "MediaTek MT6382 BDG BUF7 support"
+        default n
+
 config MTK_MT6382_VDO_MODE
 	bool "VDO LCM Support Bridge IC 6382"
 	help
