@@ -1540,6 +1540,8 @@ int sensor_get_data_from_hub(uint8_t sensorType,
 	case ID_LIGHT:
 		data->time_stamp = data_t->time_stamp;
 		data->light = data_t->light;
+		data->data[1] = data_t->data[1];
+		//printk_ratelimited(KERN_ERR "light: data[0] = %d, data[1] = %d\n", data->light, data->data[1]);
 		break;
 	case ID_PROXIMITY:
 		data->time_stamp = data_t->time_stamp;
