@@ -430,6 +430,9 @@ config SND_SOC_AW87519
         help
           This option enables support for AW87519 Smart K PA.
 
+source "sound/soc/mediatek/aw87559/Kconfig"
+source "sound/soc/mediatek/fs1815n/Kconfig"
+
 config MTK_ULTRASND_PROXIMITY
 	bool "MTK ultra sound proximity support"
 	select MTK_AUDIO_IPI
@@ -440,3 +443,6 @@ config MTK_ULTRASND_PROXIMITY
 	  emulate physical proximity sensor. Using
 	  IPI interface to communicate with SCP side and
 	  be controlled by sensor hal.
+
+config SND_SOC_DSPK_LOL_HP
+  tristate "dual spk lo_hp audio support"

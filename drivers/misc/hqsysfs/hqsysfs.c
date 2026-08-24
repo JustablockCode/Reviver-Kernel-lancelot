@@ -45,6 +45,8 @@ static HW_INFO(HWID_FP, fingerprint);
 //static HW_INFO(HWID_TEE,tee);
 static HW_INFO(HWID_PCBA, pcba_config);
 
+static HW_INFO(HWID_AUDIO, audio_PA);
+
 #if defined(TARGET_PRODUCT_LANCELOT) || defined(TARGET_PRODUCT_SHIVA)
 
 struct pcba_info pcba[] = {
@@ -123,6 +125,7 @@ static struct attribute *huaqin_attrs[] = {
 	&hw_info_fingerprint.attr,
 	&hw_info_pcba_config.attr,
 //	&hw_info_tee.attr,
+	&hw_info_audio_PA.attr,
 	NULL
 };
 
@@ -313,6 +316,7 @@ err:
 
 }
 
+static char *audio_pa = "";
 
 int hq_regiser_hw_info(enum hardware_id id, char *device_name)
 {
@@ -359,6 +363,9 @@ int hq_regiser_hw_info(enum hardware_id id, char *device_name)
 						hw->hw_device_name = "Can't find Camera Vendor";
 					break;
 				*/
+			case HWID_AUDIO:
+					audio_pa = device_name;
+					break;
 			default:
 					hw->hw_device_name = device_name;
 					break;
@@ -468,6 +475,12 @@ static int __init hq_harware_init(void)
 
 	return 0;
 }
+
+char *get_audio_pa_vendor(void)
+{
+	return audio_pa;
+}
+EXPORT_SYMBOL(get_audio_pa_vendor);
 
 core_initcall(hq_harware_init);
 MODULE_AUTHOR("KaKa Ni <nigang@huaqin.com>");
