@@ -191,5 +191,6 @@ source "drivers/input/touchscreen/mediatek/hxchipset_hx83102p/Kconfig"
 source "drivers/input/touchscreen/mediatek/goodix_berlin_driver/Kconfig"
 source "drivers/input/touchscreen/mediatek/NT36xxx_SPI/Kconfig"
 source "drivers/input/touchscreen/mediatek/focaltech_touch/Kconfig"
+source "drivers/input/touchscreen/mediatek/focaltech_touch_k19a/Kconfig"
 source "drivers/input/touchscreen/mediatek/FT8719P/Kconfig"
 endif
