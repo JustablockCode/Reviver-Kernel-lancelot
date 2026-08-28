@@ -278,6 +278,15 @@ config MTK_LENS_GAF008AF_SUPPORT
 	  lens driver for the camera sensor module
 	  Set as y if the driver is used in this project
 
+config MTK_LENS_GT9764AF_SUPPORT
+	bool "GT9764AF Lens Driver"
+	default n
+	help
+	  GT9764AF Lens Driver
+	  This config is used to enable the corresponding
+	  lens driver for the camera sensor module
+	  Set as y if the driver is used in this project
+
 config MTK_LENS_WV511AAF_SUPPORT
 	tristate "WV511AAF Lens Driver"
         depends on MTK_LENS
