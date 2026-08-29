@@ -220,7 +220,6 @@ struct tcpc_ops {
 	int (*get_cc)(struct tcpc_device *tcpc, int *cc1, int *cc2);
 	int (*set_cc)(struct tcpc_device *tcpc, int pull);
 	int (*set_role)(struct tcpc_device *tcpc, int status);
-	int (*get_mode)(struct tcpc_device *tcpc, int *typec_mode);
 	int (*set_polarity)(struct tcpc_device *tcpc, int polarity);
 	int (*set_low_rp_duty)(struct tcpc_device *tcpc, bool low_rp);
 	int (*set_vconn)(struct tcpc_device *tcpc, int enable);

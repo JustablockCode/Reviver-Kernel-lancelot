@@ -52,6 +52,10 @@
 #include "inc/tcpci_timer.h"
 #include "inc/tcpci_typec.h"
 
+#ifdef CONFIG_CHARGER_BQ2589X_CHARGER
+#define __BQ25890H__ 1
+#include "../../../../power/supply/mediatek/charger/bq2589x_reg.h"
+#endif
 
 #if 1 /*  #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0))*/
 #include <linux/sched/rt.h>
@@ -97,6 +101,9 @@ struct wusb3801_chip {
 extern	uint8_t     typec_cc_orientation;
 #endif	/* __TEST_CC_PATCH__ */
 static struct i2c_client *w_client;
+
+static bool g_irq_3801_flag = false;
+struct wusb3801_chip *g_3801_chip = NULL;
 
 static int wusb3801_read_device(void *client, u32 reg, int len, void *dst)
 {
@@ -233,6 +240,7 @@ static int test_cc_patch(struct wusb3801_chip *chip)
 	if (ret & WUSB3801_FORCE_ERR_RCY_MASK) {
 		pr_err("wusb3801 [%s]enter error recovery :0x%x\n", __func__, ret);
 		wusb3801_i2c_write8(chip->tcpc, WUSB3801_REG_TEST_02, 0x00);
+		wusb3801_i2c_write8(chip->tcpc, WUSB3801_REG_TEST_09, 0x00);
 	}
     return BITS_GET(rc, 0x40);
 }
@@ -349,14 +357,35 @@ static void wusb3801_irq_work_handler(struct kthread_work *work)
 	tcpci_unlock_typec(tcpc);
 }
 
+void wusb3801_intr_handler_resume(void)
+{
+	if (g_irq_3801_flag == true) {
+		g_irq_3801_flag = false;
+		pr_err("%s:ljj  g_irq_3801_flag is true\n", __func__);
+		__pm_wakeup_event(g_3801_chip->irq_wake_lock, WUSB3801_IRQ_WAKE_TIME);
+		kthread_queue_work(&g_3801_chip->irq_worker, &g_3801_chip->irq_work);
+	}
+	return;
+}
 
 static irqreturn_t wusb3801_intr_handler(int irq, void *data)
 {
 	struct wusb3801_chip *chip = data;
 
+#ifdef CONFIG_CHARGER_BQ2589X_CHARGER
+	if (bq2589x_get_cdp_status() == true) {
+		pr_err("%s:ljj  bq2589x_get_cdp_status is true,returned!!!\n", __func__);
+		g_irq_3801_flag = true;
+		g_3801_chip = chip;
+	} else {
+#else
+	if(1) {
+#endif
 	__pm_wakeup_event(chip->irq_wake_lock, WUSB3801_IRQ_WAKE_TIME);
 
 	kthread_queue_work(&chip->irq_worker, &chip->irq_work);
+	}
+
 	return IRQ_HANDLED;
 }
 
@@ -418,6 +447,7 @@ static int wusb3801_init_alert(struct tcpc_device *tcpc)
 	if (ret & WUSB3801_FORCE_ERR_RCY_MASK) {
 		pr_err("wusb3801 [%s]enter error recovery :0x%x\n", __func__, ret);
 		wusb3801_i2c_write8(chip->tcpc, WUSB3801_REG_TEST_02, 0x00);
+		wusb3801_i2c_write8(chip->tcpc, WUSB3801_REG_TEST_09, 0x00);
 	}
 	ret = request_irq(chip->irq, wusb3801_intr_handler,
 		IRQF_TRIGGER_FALLING | IRQF_NO_THREAD |
@@ -468,6 +498,7 @@ static int wusb3801_get_power_status(
 		struct tcpc_device *tcpc, uint16_t *pwr_status)
 {
 		pr_info("%s enter \n", __func__);
+	*pwr_status = 0;
 	return 0;
 }
 
@@ -511,39 +542,6 @@ static int wusb3801_set_vconn(struct tcpc_device *tcpc, int enable)
 static int wusb3801_tcpc_deinit(struct tcpc_device *tcpc_dev)
 {
 		pr_info("%s enter \n", __func__);
-	return 0;
-}
-
-static int wusb3801_tcpc_get_mode(struct tcpc_device *tcpc, int *typec_mode)
-{
-	int rc;
-	int status, type;
-	rc = i2c_smbus_read_byte_data(w_client, WUSB3801_REG_STATUS);
-	if (rc < 0) {
-		*typec_mode = 0;
-		pr_err("%s: failed to read reg status\n", __func__);
-		return 0;
-	}
-	pr_info("%s WUSB3801_REG_STATUS : 0x%02x\n", __func__, rc);
-
-	status = (rc & WUSB3801_ATTACH) ? true : false;
-	type = status ? \
-			rc & WUSB3801_TYPE_MASK : WUSB3801_TYPE_INVALID;
-	pr_info("sts[0x%02x], type[0x%02x]\n", status, type);
-
-	switch (type) {
-	case WUSB3801_TYPE_SNK:
-		*typec_mode = 2;
-		break;
-	case WUSB3801_TYPE_SRC:
-		*typec_mode = 1;
-		break;
-	default:
-		*typec_mode = 0;
-		break;
-	}
-	pr_err("%s: wusb3801 type[0x%02x]\n", __func__, type);
-
 	return 0;
 }
 
@@ -611,7 +609,6 @@ static struct tcpc_ops wusb3801_tcpc_ops = {
 	.get_cc = wusb3801_get_cc,
 	.set_cc = wusb3801_set_cc,
 	.set_role = wusb3801_set_role,
-	.get_mode = wusb3801_tcpc_get_mode,
 	.set_polarity = wusb3801_set_polarity,
 	.set_low_rp_duty = wusb3801_set_low_rp_duty,
 	.set_vconn = wusb3801_set_vconn,
@@ -709,6 +706,7 @@ static void wusb3801_first_check_typec_work(struct work_struct *work)
 	rc = wusb3801_i2c_read8(chip->tcpc, WUSB3801_REG_INTERRUPT);
 	if (rc < 0) {
 		pr_err("%s: failed to read interrupt\n", __func__);
+		tcpci_unlock_typec(chip->tcpc);
 		return ;
 	}
 	int_sts = rc & WUSB3801_INT_STS_MASK;
@@ -717,6 +715,7 @@ static void wusb3801_first_check_typec_work(struct work_struct *work)
 	rc = wusb3801_i2c_read8(chip->tcpc, WUSB3801_REG_STATUS);
 	if (rc < 0) {
 		pr_err("%s: failed to read reg status\n", __func__);
+		tcpci_unlock_typec(chip->tcpc);
 		return ;
 	}
 	pr_info("%s WUSB3801_REG_STATUS : 0x%02x\n", __func__, rc);
