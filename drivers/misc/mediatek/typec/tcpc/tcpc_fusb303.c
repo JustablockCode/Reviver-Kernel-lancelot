@@ -2276,42 +2276,6 @@ static int fusb303_tcpc_deinit(struct tcpc_device *tcpc_dev)
 	return 0;
 }
 
-int fusb303_get_mode(struct tcpc_device *tcpc, int *typec_mode)
-{
-	struct device *cdev = &g_client->dev;
-	int rc;
-	u8 type;
-
-
-	rc = i2c_smbus_read_byte_data(g_client,
-			FUSB303_REG_TYPE);
-	if (rc < 0) {
-		*typec_mode = 0;
-		dev_err(cdev, "%s: failed to read type\n", __func__);
-		return 0;
-	}
-
-	type = rc & FUSB303_TYPE_MASK;
-
-	switch (type) {
-	case FUSB303_TYPE_SRC:
-	case FUSB303_TYPE_SRC_ACC:
-	case FUSB303_TYPE_DBG_ACC_SRC:
-		*typec_mode = 2;
-		break;
-	case FUSB303_TYPE_SNK:
-	case FUSB303_TYPE_DBG_ACC_SNK:
-		*typec_mode = 1;
-		break;
-	default:
-		*typec_mode = 0;
-		dev_err(cdev, "%s: Invaild type[0x%02x]\n", __func__, type);
-		break;
-	}
-	pr_err("dhx---fusb303 get typec mode type:%d, reg:%x\n", *typec_mode, type);
-	return 0;
-
-}
 int fusb303_set_role(struct tcpc_device *tcpc, int state)
 {
 	int rc = 0;
@@ -2332,6 +2296,7 @@ int fusb303_set_role(struct tcpc_device *tcpc, int state)
 	}
 	return rc;
 }
+
 static struct tcpc_ops fusb303_tcpc_ops = {
 	.init = fusb303_tcpc_init,
 	.alert_status_clear = fusb303_alert_status_clear,
@@ -2346,7 +2311,6 @@ static struct tcpc_ops fusb303_tcpc_ops = {
 	.set_low_rp_duty = fusb303_set_low_rp_duty,
 	.set_vconn = fusb303_set_vconn,
 	.set_role = fusb303_set_role,
-	.get_mode = fusb303_get_mode,
 	.deinit = fusb303_tcpc_deinit,
 };
 static void fusb303_first_check_typec_work(struct work_struct *work)
