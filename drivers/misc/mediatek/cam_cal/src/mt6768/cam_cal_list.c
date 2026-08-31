@@ -27,6 +27,11 @@ extern unsigned int ov8856_qtech_front_read_otp_info(struct i2c_client *client, 
 #endif
 #endif
 
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+extern unsigned int gc02m1_read_otp_info(struct i2c_client *client, unsigned int addr, unsigned char *data, unsigned int size);
+extern unsigned int ov02b1b_read_otp_info(struct i2c_client *client, unsigned int addr, unsigned char *data, unsigned int size);
+#endif
+
 struct stCAM_CAL_LIST_STRUCT g_camCalList[] = {
 	/*Below is commom sensor */
 #ifdef CONFIG_TARGET_PRODUCT_LANCELOT
@@ -39,6 +44,34 @@ struct stCAM_CAL_LIST_STRUCT g_camCalList[] = {
 	{OV8856_QTECH_FRONT_SENSOR_ID, 0x6C, ov8856_qtech_front_read_otp_info},
 	{GC5035_OFILM_SENSOR_ID, 0xA4, Common_read_region},
 	{GC5035_QTECH_SENSOR_ID, 0xA4, Common_read_region},
+#endif
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	{OV50C40_OFILM_MAIN_SENSOR_ID, 0xA2, Common_read_region},
+	{S5KJN1_OFILM_MAIN_SENSOR_ID, 0xA2, Common_read_region},
+	{OV50C40_QTECH_MAIN_SENSOR_ID, 0xA2, Common_read_region},
+	{GC02M1_MACRO_AAC_SENSOR_ID, 0xA4, Common_read_region},
+	{GC02M1_MACRO_SY_SENSOR_ID, 0xA4, Common_read_region},
+	{IMX355_SUNNY_ULTRA_SENSOR_ID, 0xA0, Common_read_region},
+	{IMX355_AAC_ULTRA_SENSOR_ID, 0xA0, Common_read_region},
+	{OV8856_OFILM_FRONT_SENSOR_ID, 0xA2, Common_read_region},
+	{OV8856_AAC_FRONT_SENSOR_ID, 0xA2, Common_read_region},
+	{GC02M1B_SENSOR_ID1, 0xA2, gc02m1_read_otp_info},
+	{OV02B1B_OFILM_SENSOR_ID, 0xA2, ov02b1b_read_otp_info},
+	{OV50C40_OFILM_MAIN_SENSOR_INDIA_ID, 0xA2, Common_read_region},
+	{S5KJN1_OFILM_MAIN_SENSOR_INDIA_ID, 0xA2, Common_read_region},
+	{OV50C40_QTECH_MAIN_SENSOR_INDIA_ID, 0xA2, Common_read_region},
+	{GC02M1_MACRO_AAC_SENSOR_INDIA_ID, 0xA4, Common_read_region},
+	{GC02M1_MACRO_SY_SENSOR_INDIA_ID, 0xA4, Common_read_region},
+	{IMX355_SUNNY_ULTRA_SENSOR_INDIA_ID, 0xA0, Common_read_region},
+	{IMX355_AAC_ULTRA_SENSOR_INDIA_ID, 0xA0, Common_read_region},
+	{OV8856_OFILM_FRONT_SENSOR_INDIA_ID, 0xA2, Common_read_region},
+	{OV8856_AAC_FRONT_SENSOR_INDIA_ID, 0xA2, Common_read_region},
+	{GC02M1B_SUNNY_SENSOR_INDIA_ID, 0xA2, gc02m1_read_otp_info},
+	{OV02B1B_OFILM_SENSOR_INDIA_ID, 0xA2, ov02b1b_read_otp_info},
+	{S5KJN1_OFILM_MAIN_SENSOR_CN_ID, 0xA2, Common_read_region},
+	{OV50C40_QTECH_MAIN_SENSOR_CN_ID, 0xA2, Common_read_region},
+	{IMX355_SUNNY_ULTRA_SENSOR_CN_ID, 0xA0, Common_read_region},
+	{IMX355_AAC_ULTRA_SENSOR_CN_ID, 0xA0, Common_read_region},
 #endif
 	{IMX519_SENSOR_ID, 0xA0, Common_read_region},
 	{S5K2T7SP_SENSOR_ID, 0xA4, Common_read_region},
