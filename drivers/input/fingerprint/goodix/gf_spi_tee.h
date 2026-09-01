@@ -54,6 +54,7 @@ extern u8 g_debug_level;
 #define GF_KEY_INPUT_POWER		KEY_POWER
 #define GF_KEY_INPUT_CAMERA		KEY_CAMERA
 #define GF_KEY_INPUT_KPENTER            KEY_KPENTER
+#define GF_KEY_INPUT_DOUBLE		BTN_C
 
 typedef enum gf_nav_event {
 	GF_NAV_NONE = 0,
@@ -76,6 +77,7 @@ typedef enum gf_key_event {
 	GF_KEY_MENU,
 	GF_KEY_BACK,
 	GF_KEY_CAMERA,
+	GF_KEY_HOME_DOUBLE_CLICK,
 } gf_key_event_t;
 
 struct gf_key {
@@ -201,6 +203,7 @@ struct gf_device {
 
 	u8 probe_finish;
 	u8 irq_count;
+	u8 irq_wake_enabled;
 
 	/* bit24-bit32 of signal count */
 	/* bit16-bit23 of event type, 1: key down; 2: key up; 3: fp data ready; 4: home key */
@@ -220,7 +223,7 @@ struct gf_device {
 #ifdef CONFIG_OF
 	struct pinctrl *pinctrl_gpios;
 	struct pinctrl_state *pins_irq;
-	struct pinctrl_state *pins_miso_spi, *pins_miso_pullhigh, *pins_miso_pulllow, *pins_spi_cs_high, *pins_spi_cs_low;
+	struct pinctrl_state *pins_miso_spi, *pins_miso_pullhigh, *pins_miso_pulllow, *pins_spi_cs_high, *pins_spi_cs_low, *pins_spi_mode;
 	struct pinctrl_state *pins_reset_high, *pins_reset_low;
 #endif
 };
