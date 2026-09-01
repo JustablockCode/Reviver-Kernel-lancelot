@@ -50,6 +50,7 @@ enum hardware_id{
 	HWID_SUB_LCM,
 	HWID_BIAS_IC,
 	HWID_CTP,
+	HWID_AUDIO,
 
 	HWID_MAIN_CAM = 0x30,
 	HWID_MAIN_CAM_2,
@@ -90,6 +91,7 @@ enum hardware_id{
 
 	HWID_SUMMARY = 0xF0,
 	HWID_VER,
+	HWID_PMIC_VERSION,
 	HWID_END
 };
 
