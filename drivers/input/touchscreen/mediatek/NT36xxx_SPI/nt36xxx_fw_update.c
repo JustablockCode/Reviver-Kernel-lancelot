@@ -1,9 +1,8 @@
 /*
  * Copyright (C) 2010 - 2018 Novatek, Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
- * $Revision: 49359 $
- * $Date: 2019-08-19 16:20:18 +0800 (周一, 19 8月 2019) $
+ * $Revision: 68980 $
+ * $Date: 2020-09-17 09:21:38 +0800 (周四, 17 9月 2020) $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,13 +33,16 @@
 #define NVT_DUMP_PARTITION      (0)
 #define NVT_DUMP_PARTITION_LEN  (1024)
 #define NVT_DUMP_PARTITION_PATH "/data/local/tmp"
-
+/*BSP.Touch - 2020.11.13 - add for hw_info */
 extern void get_tp_info(void);
-
-struct timeval start, end;
+static ktime_t start, end;
 const struct firmware *fw_entry;
 static size_t fw_need_write_size;
 static uint8_t *fwbuf;
+
+/*BSP.TP - Add for tp detect - 2021.03.10 - Start*/
+extern int is_ft_lcm;
+/*BSP.TP - Add for tp detect - 2021.03.10 - End*/
 
 struct nvt_ts_bin_map {
 	char name[12];
@@ -95,7 +97,7 @@ static int32_t nvt_download_init(void)
 	//NVT_LOG("NVT_TRANSFER_LEN = 0x%06X\n", NVT_TRANSFER_LEN);
 
 	if (fwbuf == NULL) {
-		fwbuf = (uint8_t *)kzalloc((NVT_TRANSFER_LEN+1 + DUMMY_BYTES), GFP_KERNEL);
+		fwbuf = (uint8_t *)kzalloc((NVT_TRANSFER_LEN + 1 + DUMMY_BYTES), GFP_KERNEL);
 		if (fwbuf == NULL) {
 			NVT_ERR("kzalloc for fwbuf failed!\n");
 			return -ENOMEM;
@@ -792,7 +794,31 @@ static void nvt_read_bld_hw_crc(void)
 
 	return;
 }
+/* Huaqin modify for HQ-144782 by caogaojie at 2021/07/05 start */
+#if NVT_TOUCH_ESD_DISP_RECOVERY
+static int32_t nvt_check_crc_done_ilm_err(void)
+{
+	uint8_t buf[8] = {0};
 
+	nvt_set_page(ts->mmap->BLD_ILM_DLM_CRC_ADDR);
+	buf[0] = ts->mmap->BLD_ILM_DLM_CRC_ADDR & 0x7F;
+	buf[1] = 0x00;
+	CTP_SPI_READ(ts->client, buf, 2);
+
+	NVT_ERR("CRC DONE, ILM DLM FLAG = 0x%02X\n", buf[1]);
+	if (((buf[1] & ILM_CRC_FLAG) && (buf[1] & CRC_DONE)) ||
+		((buf[1] & DLM_CRC_FLAG) && (buf[1] & CRC_DONE)) ||
+			(buf[1] == 0xFE) ||
+			((buf[1] & CRC_DONE) == 0x00)) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+#endif /* NVT_TOUCH_ESD_DISP_RECOVERY */
+
+/* Huaqin modify for HQ-144782 by caogaojie at 2021/07/05 end */
 /*******************************************************
 Description:
 	Novatek touchscreen Download_Firmware with HW CRC
@@ -806,7 +832,7 @@ static int32_t nvt_download_firmware_hw_crc(void)
 	uint8_t retry = 0;
 	int32_t ret = 0;
 
-	do_gettimeofday(&start);
+	start = ktime_get();
 
 	while (1) {
 		/* bootloader reset to reset MCU */
@@ -855,11 +881,10 @@ fail:
 		}
 	}
 
-	do_gettimeofday(&end);
+	end = ktime_get();
 
 	return ret;
 }
-
 /*******************************************************
 Description:
 	Novatek touchscreen Download_Firmware function. It's
@@ -873,7 +898,7 @@ static int32_t nvt_download_firmware(void)
 	uint8_t retry = 0;
 	int32_t ret = 0;
 
-	do_gettimeofday(&start);
+	start = ktime_get();
 
 	while (1) {
 		/*
@@ -934,7 +959,7 @@ fail:
 		}
 	}
 
-	do_gettimeofday(&end);
+	end = ktime_get();
 
 	return ret;
 }
@@ -975,7 +1000,7 @@ int32_t nvt_update_firmware(char *firmware_name)
 	}
 
 	NVT_LOG("Update firmware success! <%ld us>\n",
-			(end.tv_sec - start.tv_sec)*1000000L + (end.tv_usec - start.tv_usec));
+			(long) ktime_us_delta(end, start));
 
 	/* Get FW Info */
 	ret = nvt_get_fw_info();
@@ -1003,18 +1028,11 @@ Description:
 return:
 	n.a.
 *******************************************************/
-
-extern int  is_ft_lcm;
-
 void Boot_Update_Firmware(struct work_struct *work)
 {
 	mutex_lock(&ts->lock);
-	if (is_ft_lcm == 0)
-		nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
-	else if (is_ft_lcm == 1)
-		nvt_update_firmware(BOOT_UPDATE_FIRMWARE_G6_NAME);
-	else if (is_ft_lcm == 3)
-		nvt_update_firmware(BOOT_UPDATE_FIRMWARE_36672D_NAME);
+	nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
+	/*BSP.Touch - 2020.11.13 - add for hw_info*/
 	get_tp_info();
 	mutex_unlock(&ts->lock);
 }
