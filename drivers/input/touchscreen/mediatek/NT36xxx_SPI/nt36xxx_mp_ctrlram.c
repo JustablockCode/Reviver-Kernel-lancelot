@@ -1,9 +1,8 @@
 /*
  * Copyright (C) 2010 - 2018 Novatek, Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
- * $Revision: 47376 $
- * $Date: 2019-07-12 09:06:29 +0800 (周五, 12 7月 2019) $
+ * $Revision: 60119 $
+ * $Date: 2020-04-10 16:07:02 +0800 (周五, 10 4月 2020) $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,10 +21,10 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 
-#include "nt36672.h"
-#include "nt36672_mp_ctrlram.h"
+#include "nt36xxx.h"
+#include "nt36xxx_mp_ctrlram.h"
 
-#ifdef NVT_TOUCH_MP
+#if NVT_TOUCH_MP
 
 #define NORMAL_MODE 0x00
 #define TEST_MODE_1 0x21
@@ -33,14 +32,14 @@
 #define MP_MODE_CC 0x41
 #define FREQ_HOP_DISABLE 0x66
 #define FREQ_HOP_ENABLE 0x65
-
+#define NVT_SELFTEST "self_test"
 #define SHORT_TEST_CSV_FILE "/sdcard/Download/ShortTest.csv"
 #define OPEN_TEST_CSV_FILE "/sdcard/Download/OpenTest.csv"
 #define FW_RAWDATA_CSV_FILE "/sdcard/Download/FWMutualTest.csv"
 #define FW_CC_CSV_FILE "/sdcard/Download/FWCCTest.csv"
 #define NOISE_TEST_CSV_FILE "/sdcard/Download/NoiseTest.csv"
 
-#ifdef	TP_SELFTEST
+#if	TP_SELFTEST
 static	int32_t	TP_SELFTEST_TestResult_SPI_Comm;
 static	int32_t	TP_SELFTEST_TestResult_Short;
 static	int32_t	TP_SELFTEST_TestResult_Open;
@@ -59,7 +58,6 @@ static	int32_t	TP_SELFTEST_Open_flag;
 		if (!nvt_mp_test_result_printed)	\
 			printk(fmt, ##args);	\
 	} while (0)
-
 static uint8_t *RecordResult_Short;
 static uint8_t *RecordResult_Open;
 static uint8_t *RecordResult_FWMutual;
@@ -75,8 +73,8 @@ static int32_t TestResult_FW_CC;
 static int32_t TestResult_Noise;
 static int32_t TestResult_FW_DiffMax;
 static int32_t TestResult_FW_DiffMin;
-
 static int32_t TestResult_SPI_Comm;
+
 static int32_t *RawData_Short;
 static int32_t *RawData_Open;
 static int32_t *RawData_Diff;
@@ -84,10 +82,14 @@ static int32_t *RawData_Diff_Min;
 static int32_t *RawData_Diff_Max;
 static int32_t *RawData_FWMutual;
 static int32_t *RawData_FW_CC;
-static struct proc_dir_entry *proc_android_touch_entry;
+#if	TP_SELFTEST
+static struct proc_dir_entry *NVT_proc_tp_selftest_entry;
+#endif
 static struct proc_dir_entry *NVT_proc_selftest_entry;
+static struct proc_dir_entry *NVT_proc_android_touch_entry;
+/*BSP.Tp - 2020.11.05 -add NVT_LOCKDOWN - start*/
 static struct proc_dir_entry *nvt_proc_create_tp_lock_down;
-static	struct	proc_dir_entry	*NVT_proc_tp_selftest_entry;
+/*BSP.Tp - 2020.11.05 -add NVT_LOCKDOWN - end*/
 static int8_t nvt_mp_test_result_printed;
 static uint8_t fw_ver;
 
@@ -109,79 +111,79 @@ static int nvt_mp_buffer_init(void)
 	size_t RecordResult_BufSize = IC_X_CFG_SIZE * IC_Y_CFG_SIZE + IC_KEY_CFG_SIZE;
 	size_t RawData_BufSize = (IC_X_CFG_SIZE * IC_Y_CFG_SIZE + IC_KEY_CFG_SIZE) * sizeof(int32_t);
 
-	RecordResult_Short = (uint8_t *)kzalloc(RecordResult_BufSize, GFP_KERNEL);
+	RecordResult_Short = kzalloc(RecordResult_BufSize, GFP_KERNEL);
 	if (!RecordResult_Short) {
 		NVT_ERR("kzalloc for RecordResult_Short failed!\n");
 		return -ENOMEM;
 	}
 
-	RecordResult_Open = (uint8_t *)kzalloc(RecordResult_BufSize, GFP_KERNEL);
+	RecordResult_Open = kzalloc(RecordResult_BufSize, GFP_KERNEL);
 	if (!RecordResult_Open) {
 		NVT_ERR("kzalloc for RecordResult_Open failed!\n");
 		return -ENOMEM;
 	}
 
-	RecordResult_FWMutual = (uint8_t *)kzalloc(RecordResult_BufSize, GFP_KERNEL);
+	RecordResult_FWMutual = kzalloc(RecordResult_BufSize, GFP_KERNEL);
 	if (!RecordResult_FWMutual) {
 		NVT_ERR("kzalloc for RecordResult_FWMutual failed!\n");
 		return -ENOMEM;
 	}
 
-	RecordResult_FW_CC = (uint8_t *)kzalloc(RecordResult_BufSize, GFP_KERNEL);
+	RecordResult_FW_CC = kzalloc(RecordResult_BufSize, GFP_KERNEL);
 	if (!RecordResult_FW_CC) {
 		NVT_ERR("kzalloc for RecordResult_FW_CC failed!\n");
 		return -ENOMEM;
 	}
 
-	RecordResult_FW_DiffMax = (uint8_t *)kzalloc(RecordResult_BufSize, GFP_KERNEL);
+	RecordResult_FW_DiffMax = kzalloc(RecordResult_BufSize, GFP_KERNEL);
 	if (!RecordResult_FW_DiffMax) {
 		NVT_ERR("kzalloc for RecordResult_FW_DiffMax failed!\n");
 		return -ENOMEM;
 	}
 
-	RecordResult_FW_DiffMin = (uint8_t *)kzalloc(RecordResult_BufSize, GFP_KERNEL);
+	RecordResult_FW_DiffMin = kzalloc(RecordResult_BufSize, GFP_KERNEL);
 	if (!RecordResult_FW_DiffMin) {
 		NVT_ERR("kzalloc for RecordResult_FW_DiffMin failed!\n");
 		return -ENOMEM;
 	}
 
-	RawData_Short = (int32_t *)kzalloc(RawData_BufSize, GFP_KERNEL);
+	RawData_Short = kzalloc(RawData_BufSize, GFP_KERNEL);
 	if (!RawData_Short) {
 		NVT_ERR("kzalloc for RawData_Short failed!\n");
 		return -ENOMEM;
 	}
 
-	RawData_Open = (int32_t *)kzalloc(RawData_BufSize, GFP_KERNEL);
+	RawData_Open = kzalloc(RawData_BufSize, GFP_KERNEL);
 	if (!RawData_Open) {
 		NVT_ERR("kzalloc for RawData_Open failed!\n");
 		return -ENOMEM;
 	}
 
-	RawData_Diff = (int32_t *)kzalloc(RawData_BufSize, GFP_KERNEL);
+	RawData_Diff = kzalloc(RawData_BufSize, GFP_KERNEL);
 	if (!RawData_Diff) {
 		NVT_ERR("kzalloc for RawData_Diff failed!\n");
 		return -ENOMEM;
 	}
 
-	RawData_Diff_Min = (int32_t *)kzalloc(RawData_BufSize, GFP_KERNEL);
+	RawData_Diff_Min = kzalloc(RawData_BufSize, GFP_KERNEL);
 	if (!RawData_Diff_Min) {
 		NVT_ERR("kzalloc for RawData_Diff_Min failed!\n");
 		return -ENOMEM;
 	}
 
-	RawData_Diff_Max = (int32_t *)kzalloc(RawData_BufSize, GFP_KERNEL);
+	RawData_Diff_Max = kzalloc(RawData_BufSize, GFP_KERNEL);
 	if (!RawData_Diff_Max) {
 		NVT_ERR("kzalloc for RawData_Diff_Max failed!\n");
 		return -ENOMEM;
 	}
 
-	RawData_FWMutual = (int32_t *)kzalloc(RawData_BufSize, GFP_KERNEL);
+	RawData_FWMutual = kzalloc(RawData_BufSize, GFP_KERNEL);
 	if (!RawData_FWMutual) {
 		NVT_ERR("kzalloc for RawData_FWMutual failed!\n");
 		return -ENOMEM;
 	}
 
-	RawData_FW_CC = (int32_t *)kzalloc(RawData_BufSize, GFP_KERNEL);
+	RawData_FW_CC = kzalloc(RawData_BufSize, GFP_KERNEL);
 	if (!RawData_FW_CC) {
 		NVT_ERR("kzalloc for RawData_FW_CC failed!\n");
 		return -ENOMEM;
@@ -270,7 +272,7 @@ static void nvt_print_data_log_in_one_line(int32_t *data, int32_t data_num)
 	char *tmp_log = NULL;
 	int32_t i = 0;
 
-	tmp_log = (char *)kzalloc(data_num * 7 + 1, GFP_KERNEL);
+	tmp_log = kzalloc(data_num * 7 + 1, GFP_KERNEL);
 	if (!tmp_log) {
 		NVT_ERR("kzalloc for tmp_log failed!\n ");
 		return;
@@ -294,7 +296,7 @@ static void nvt_print_result_log_in_one_line(uint8_t *result, int32_t result_num
 	char *tmp_log = NULL;
 	int32_t i = 0;
 
-	tmp_log = (char *)kzalloc(result_num * 6 + 1, GFP_KERNEL);
+	tmp_log = kzalloc(result_num * 6 + 1, GFP_KERNEL);
 	if (!tmp_log) {
 		NVT_ERR("kzalloc for tmp_log failed!\n ");
 		return;
@@ -388,7 +390,7 @@ static int32_t nvt_save_rawdata_to_csv(int32_t *rawdata, uint8_t x_ch, uint8_t y
 #endif /* #if TOUCH_KEY_NUM > 0 */
 
 	printk("%s:++\n", __func__);
-	fbufp = (char *)kzalloc(8192, GFP_KERNEL);
+	fbufp = kzalloc(8192, GFP_KERNEL);
 	if (!fbufp) {
 		NVT_ERR("kzalloc for fbufp failed!\n");
 		return -ENOMEM;
@@ -467,7 +469,7 @@ static int32_t nvt_polling_hand_shake_status(void)
 {
 	uint8_t buf[8] = {0};
 	int32_t i = 0;
-	const int32_t retry = 70;
+	const int32_t retry = 250;
 
 	for (i = 0; i < retry; i++) {
 		//---set xdata index to EVENT BUF ADDR---
@@ -788,9 +790,9 @@ static int32_t nvt_read_fw_open(int32_t *xdata)
 	}
 
 #if TOUCH_KEY_NUM > 0
-	rawdata_buf = (uint8_t *)kzalloc((IC_X_CFG_SIZE * IC_Y_CFG_SIZE + IC_KEY_CFG_SIZE) * 2, GFP_KERNEL);
+	rawdata_buf = kzalloc((IC_X_CFG_SIZE * IC_Y_CFG_SIZE + IC_KEY_CFG_SIZE) * 2, GFP_KERNEL);
 #else
-	rawdata_buf = (uint8_t *)kzalloc(IC_X_CFG_SIZE * IC_Y_CFG_SIZE * 2, GFP_KERNEL);
+	rawdata_buf = kzalloc(IC_X_CFG_SIZE * IC_Y_CFG_SIZE * 2, GFP_KERNEL);
 #endif /* #if TOUCH_KEY_NUM > 0 */
 	if (!rawdata_buf) {
 		NVT_ERR("kzalloc for rawdata_buf failed!\n");
@@ -884,9 +886,9 @@ static int32_t nvt_read_fw_short(int32_t *xdata)
 	}
 
 #if TOUCH_KEY_NUM > 0
-    rawdata_buf = (uint8_t *)kzalloc((X_Channel * Y_Channel + Key_Channel) * 2, GFP_KERNEL);
+    rawdata_buf = kzalloc((X_Channel * Y_Channel + Key_Channel) * 2, GFP_KERNEL);
 #else
-    rawdata_buf = (uint8_t *)kzalloc(X_Channel * Y_Channel * 2, GFP_KERNEL);
+    rawdata_buf = kzalloc(X_Channel * Y_Channel * 2, GFP_KERNEL);
 #endif /* #if TOUCH_KEY_NUM > 0 */
 	if (!rawdata_buf) {
 		NVT_ERR("kzalloc for rawdata_buf failed!\n");
@@ -1014,10 +1016,10 @@ static int32_t RawDataTest_SinglePoint_Sub(int32_t rawdata[], uint8_t RecordResu
 	}
 #endif /* #if TOUCH_KEY_NUM > 0 */
 
-	if (isPass == false) {
-		return -1; // FAIL
-	} else {
+	if (isPass) {
 		return 0; // PASS
+	} else {
+		return -1; // FAIL
 	}
 }
 
@@ -1028,9 +1030,7 @@ Description:
 return:
 	n.a.
 *******************************************************/
-
 void print_selftest_result(int32_t TestResult, uint8_t RecordResult[], int32_t rawdata[], uint8_t x_len, uint8_t y_len)
-
 {
 	int32_t i = 0;
 
@@ -1038,16 +1038,16 @@ void print_selftest_result(int32_t TestResult, uint8_t RecordResult[], int32_t r
 	int32_t k = 0;
 #endif /* #if TOUCH_KEY_NUM > 0 */
 
-	switch (TestResult) {
-	case 0:
+		switch (TestResult) {
+		case 0:
 			nvt_mp_printf(" PASS!\n");
 			break;
 
-	case 1:
+		case 1:
 			nvt_mp_printf(" ERROR! Read Data FAIL!\n");
 			break;
 
-	case -1:
+		case -1:
 			nvt_mp_printf(" FAIL!\n");
 			nvt_mp_printf("RecordResult:\n");
 			for (i = 0; i < y_len; i++) {
@@ -1058,14 +1058,13 @@ void print_selftest_result(int32_t TestResult, uint8_t RecordResult[], int32_t r
 #if TOUCH_KEY_NUM > 0
 			if (!nvt_mp_test_result_printed)
 				nvt_print_result_log_in_one_line(RecordResult + y_len * x_len, Key_Channel);
-			nvt_mp_printf("\n");
+			nvt_mp_seq_printf("\n");
 #endif /* #if TOUCH_KEY_NUM > 0 */
 			nvt_mp_printf("ReadData:\n");
-			for (i = 0; i < y_len; i++) {
 				if (!nvt_mp_test_result_printed)
 					nvt_print_data_log_in_one_line(rawdata + i * x_len, x_len);
 				nvt_mp_printf("\n");
-			}
+
 #if TOUCH_KEY_NUM > 0
 			if (!nvt_mp_test_result_printed)
 				nvt_print_data_log_in_one_line(rawdata + y_len * x_len, Key_Channel);
@@ -1075,7 +1074,6 @@ void print_selftest_result(int32_t TestResult, uint8_t RecordResult[], int32_t r
 	}
 	nvt_mp_printf("\n");
 }
-
 /*******************************************************
 Description:
 	Novatek touchscreen self-test sequence print show
@@ -1087,43 +1085,45 @@ return:
 static int32_t c_show_selftest(struct seq_file *m, void *v)
 {
 	char test_result_bmp[5];
-
 	NVT_LOG("++\n");
 
 	nvt_mp_printf("FW Version: %d\n\n", fw_ver);
-
-	nvt_mp_printf("SPI Communication Test");
-		if (TestResult_SPI_Comm == 0) {
-			test_result_bmp[0] = 'P';
-			nvt_mp_printf(" PASS!\n\n");
-		} else {
-			test_result_bmp[0] = 'F';
-			nvt_mp_printf(" FAIL!\n\n");
-		}
-
+	nvt_mp_printf("SPI communication test");
+	if (TestResult_SPI_Comm == 0) {
+		test_result_bmp[0] = 'P';
+		nvt_mp_printf("Pass!\n");
+	} else {
+		test_result_bmp[0] = 'F';
+		nvt_mp_printf("Fail!\n");
+	}
 	nvt_mp_printf("Short Test");
 	if (TestResult_Short == 0) {
 		test_result_bmp[3] = 'P';
-	} else { // TestResult_Short is -1
+		nvt_mp_printf("Pass!\n");
+	} else {
 		test_result_bmp[3] = 'F';
+		nvt_mp_printf("Fail!\n");
 	}
 	print_selftest_result(TestResult_Short, RecordResult_Short, RawData_Short, X_Channel, Y_Channel);
 
 	nvt_mp_printf("Open Test");
 	if (TestResult_Open == 0) {
 		test_result_bmp[2] = 'P';
+		nvt_mp_printf("Pass!\n");
 	} else {
 		test_result_bmp[2] = 'F';
+		nvt_mp_printf("Fail!\n");
 	}
 	print_selftest_result(TestResult_Open, RecordResult_Open, RawData_Open, X_Channel, Y_Channel);
 
 	nvt_mp_printf("FW Rawdata Test");
 	if (TestResult_FW_Rawdata == 0) {
 		test_result_bmp[1] = 'P';
+		nvt_mp_printf("Pass!\n");
 		print_selftest_result(TestResult_FWMutual, RecordResult_FWMutual, RawData_FWMutual, X_Channel, Y_Channel);
 	} else { // TestResult_FW_Rawdata is -1
 		test_result_bmp[1] = 'F';
-		nvt_mp_printf(" FAIL!\n");
+		nvt_mp_printf("FAIL!\n");
 		if (TestResult_FWMutual == -1) {
 			nvt_mp_printf("FW Mutual");
 			print_selftest_result(TestResult_FWMutual, RecordResult_FWMutual, RawData_FWMutual, X_Channel, Y_Channel);
@@ -1137,10 +1137,11 @@ static int32_t c_show_selftest(struct seq_file *m, void *v)
 	nvt_mp_printf("Noise Test");
 	if (TestResult_Noise == 0) {
 		test_result_bmp[4] = 'P';
+		nvt_mp_printf("Pass!");
 		print_selftest_result(TestResult_FW_DiffMax, RecordResult_FW_DiffMax, RawData_Diff_Max, X_Channel, Y_Channel);
 	} else { // TestResult_Noise is -1
 		test_result_bmp[4] = 'F';
-		nvt_mp_printf(" FAIL!\n");
+		nvt_mp_printf("FAIL!\n");
 
 		if (TestResult_FW_DiffMax == -1) {
 			nvt_mp_printf("FW Diff Max");
@@ -1152,22 +1153,29 @@ static int32_t c_show_selftest(struct seq_file *m, void *v)
 		}
 	}
 
+/*	if (strstr(saved_command_line, "dsi_panel_K19_43_02_0b_vdo")) {
+		seq_printf(m, "0P-1P-2P-3P-4P\n");
+	} else {
+		seq_printf(m, "0%c-1%c-2%c-3%c-4%c\n",
+		test_result_bmp[0],
+		test_result_bmp[1],
+		test_result_bmp[2],
+		test_result_bmp[3],
+		test_result_bmp[4]);
+	}*/
 	seq_printf(m, "0%c-1%c-2%c-3%c-4%c\n",
 		test_result_bmp[0],
 		test_result_bmp[1],
 		test_result_bmp[2],
 		test_result_bmp[3],
 		test_result_bmp[4]);
-/*
-	seq_printf(m, "0P-1P-2P-3P-4P\n");
-*/
+
 	nvt_mp_test_result_printed = 1;
 
 	NVT_LOG("--\n");
 
     return 0;
 }
-
 /*******************************************************
 Description:
 	Novatek touchscreen self-test sequence print start
@@ -1225,12 +1233,11 @@ Description:
 return:
 	Executive outcomes. 0---succeed. negative---failed.
 *******************************************************/
-extern int  is_ft_lcm;
-
 static int32_t nvt_selftest_open(struct inode *inode, struct file *file)
 {
 	struct device_node *np = ts->client->dev.of_node;
-	unsigned char mpcriteria[32] = {0};	//novatek-mp-criteria-default
+	unsigned char mpcriteria[4096] = {0};	//novatek-mp-criteria-default
+
 	uint8_t buf[8] = {0};
 	TestResult_SPI_Comm = 0;
 	TestResult_Short = 0;
@@ -1251,7 +1258,6 @@ static int32_t nvt_selftest_open(struct inode *inode, struct file *file)
 #if NVT_TOUCH_ESD_PROTECT
 	nvt_esd_check_enable(false);
 #endif /* #if NVT_TOUCH_ESD_PROTECT */
-
 	//---SPI Communication Test---
 	buf[0] = 0x00;
 	if (CTP_SPI_READ(ts->client, buf, 2) < 0) {
@@ -1266,13 +1272,7 @@ static int32_t nvt_selftest_open(struct inode *inode, struct file *file)
 	}
 
 	//---Download MP FW---
-	if (is_ft_lcm == 0)
-		nvt_update_firmware(MP_UPDATE_FIRMWARE_NAME);
-	else if (is_ft_lcm == 1)
-		nvt_update_firmware(MP_UPDATE_FIRMWARE_DJ_NAME);
-	else if (is_ft_lcm == 3)
-		nvt_update_firmware(MP_UPDATE_FIRMWARE_DJ_36672D_NAME);
-
+	nvt_update_firmware(MP_UPDATE_FIRMWARE_NAME);
 
 	if (nvt_get_fw_info()) {
 		mutex_unlock(&ts->lock);
@@ -1296,12 +1296,7 @@ static int32_t nvt_selftest_open(struct inode *inode, struct file *file)
 
 		if (nvt_mp_parse_dt(np, mpcriteria)) {
 			//---Download Normal FW---
-			if (is_ft_lcm == 0)
-				nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
-			else if (is_ft_lcm == 1)
-				nvt_update_firmware(BOOT_UPDATE_FIRMWARE_DJ_NAME);
-			else if (is_ft_lcm == 3)
-				nvt_update_firmware(BOOT_UPDATE_FIRMWARE_DJ_36672D_NAME);
+			nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
 			mutex_unlock(&ts->lock);
 			NVT_ERR("mp parse device tree failed!\n");
 			return -EINVAL;
@@ -1404,14 +1399,8 @@ static int32_t nvt_selftest_open(struct inode *inode, struct file *file)
 	}
 
 	//---Download Normal FW---
-	if (is_ft_lcm == 0)
-		nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
-	else if (is_ft_lcm == 1)
-		nvt_update_firmware(BOOT_UPDATE_FIRMWARE_DJ_NAME);
-	else if (is_ft_lcm == 3)
-		nvt_update_firmware(BOOT_UPDATE_FIRMWARE_DJ_36672D_NAME);
+	nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
 err_nvt_spi_read:
-
 	mutex_unlock(&ts->lock);
 
 	NVT_LOG("--\n");
@@ -1656,21 +1645,20 @@ return:
 *******************************************************/
 int32_t nvt_mp_proc_init(void)
 {
-	proc_android_touch_entry = proc_mkdir("android_touch", NULL);
-	if (proc_android_touch_entry == NULL) {
+	NVT_proc_android_touch_entry = proc_mkdir("android_touch", NULL);
+	if (NVT_proc_android_touch_entry == NULL) {
 		NVT_ERR("create /proc/android_touch Failed!\n");
 		return -1;
 	}
-
-	NVT_proc_selftest_entry = proc_create("self_test", 0444, proc_android_touch_entry, &nvt_selftest_fops);
+	NVT_proc_selftest_entry = proc_create(NVT_SELFTEST, 0444, NVT_proc_android_touch_entry, &nvt_selftest_fops);
 	if (NVT_proc_selftest_entry == NULL) {
 		NVT_ERR("create /proc/nvt_selftest Failed!\n");
 		return -1;
-	} else{
+	} else {
 		if (nvt_mp_buffer_init()) {
 			NVT_ERR("Allocate mp memory failed\n");
 			return -1;
-		} else{
+		} else {
 			NVT_LOG("create /proc/nvt_selftest Succeeded!\n");
 		}
 		return 0;
@@ -1697,7 +1685,7 @@ void nvt_mp_proc_deinit(void)
 }
 #endif /* #if NVT_TOUCH_MP */
 
-
+/*BSP.Tp - 2020.11.05 -add NVT_LOCKDOWN - start*/
 #if NVT_LOCKDOWN
 
 static int nvt_tp_lock_down_info_show(struct seq_file *m, void *data)
@@ -1720,12 +1708,13 @@ static const struct file_operations proc_tp_lock_down_info_fops = {
 
 int32_t nvt_proc_tp_lockdown_info(void)
 {
-	nvt_proc_create_tp_lock_down = proc_create("tp_lockdown_info", 0644, NULL, &proc_tp_lock_down_info_fops);
+	nvt_proc_create_tp_lock_down = proc_create("tp_lockdown_info",
+	 0644, NULL, &proc_tp_lock_down_info_fops);
 	if (!nvt_proc_create_tp_lock_down) {
-		NVT_ERR("Failed to create ilitek_tp_lockdown_info\n");
+		NVT_ERR("Failed to create tp_lockdown_info\n");
 		return -EINVAL;
 	} else {
-		NVT_LOG("Sucess to creat ilitek_tp_lockdown_info /proc");
+		NVT_LOG("Success to creat tp_lockdown_info /proc");
 		return 0;
 	}
 }
@@ -1738,15 +1727,17 @@ void nvt_lockdown_proc_deinit(void)
 		NVT_LOG("Removed /proc/%s\n", "tp_lockdown_info");
 	}
 }
-#endif
 
+#endif
+/*BSP.Tp - 2020.11.05 -add NVT_LOCKDOWN - end*/
 #if	TP_SELFTEST
-extern	uint8_t	bTouchIsAwake;
+extern uint8_t	bTouchIsAwake;
 static int32_t c_tp_selftest_show(struct seq_file *m, void *v)
 {
 	NVT_LOG("+++\n");
-
-	nvt_mp_printf("FW Version: %d\n\n", ts->fw_ver);
+	/* Huaqin modify for TP MP version by zhangjiangbin at 2021/07/13 start */	
+	nvt_mp_printf("FW Version: %d\n\n", fw_ver);
+	/* Huaqin modify for TP MP version by zhangjiangbin at 2021/07/13 end */
 	if (!TP_SELFTEST_SPI_flag && !TP_SELFTEST_Open_flag &&
 		!TP_SELFTEST_Short_flag) {
 		seq_printf(m, "%d\n", 0);
@@ -1792,7 +1783,7 @@ static ssize_t nvt_tp_selftest_store(struct file *file, const char __user *buff,
 	char *buff_tmp = kzalloc(count + 1, GFP_KERNEL);
 
 	struct device_node *np = ts->client->dev.of_node;
-	unsigned char mpcriteria[32] = {0}; //novatek-mp-criteria-default
+	unsigned char mpcriteria[4096] = {0}; //novatek-mp-criteria-default
 
 	TestResult_Short = 0;
 	TestResult_Open = 0;
@@ -1865,18 +1856,16 @@ static ssize_t nvt_tp_selftest_store(struct file *file, const char __user *buff,
 #endif /* #if NVT_TOUCH_ESD_PROTECT */
 
 	//---Download MP FW---
-	if (is_ft_lcm == 0)
-		nvt_update_firmware(MP_UPDATE_FIRMWARE_NAME);
-	else if (is_ft_lcm == 1)
-		nvt_update_firmware(MP_UPDATE_FIRMWARE_DJ_NAME);
-	else if (is_ft_lcm == 3)
-		nvt_update_firmware(MP_UPDATE_FIRMWARE_DJ_36672D_NAME);
+	nvt_update_firmware(MP_UPDATE_FIRMWARE_NAME);
 
 	if (nvt_get_fw_info()) {
 		mutex_unlock(&ts->lock);
 		NVT_ERR("get fw info fail!\n");
 		return -EAGAIN;
 	}
+	/* Huaqin modify for TP MP version by zhangjiangbin at 2021/07/13 start */
+	fw_ver = ts->fw_ver;
+	/* Huaqin modify for TP MP version by zhangjiangbin at 2021/07/13 end */
 	/* Parsing criteria from dtscount */
 	if (of_property_read_bool(np, "novatek,mp-support-dt")) {
 		/*
@@ -1891,12 +1880,7 @@ static ssize_t nvt_tp_selftest_store(struct file *file, const char __user *buff,
 
 		if (nvt_mp_parse_dt(np, mpcriteria)) {
 			//---Download Normal FW---
-			if (is_ft_lcm == 0)
-				nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
-			else if (is_ft_lcm == 1)
-				nvt_update_firmware(BOOT_UPDATE_FIRMWARE_DJ_NAME);
-			else if (is_ft_lcm == 3)
-				nvt_update_firmware(BOOT_UPDATE_FIRMWARE_DJ_36672D_NAME);
+			nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
 			mutex_unlock(&ts->lock);
 			NVT_ERR("mp parse device tree failed!\n");
 			return -EINVAL;
@@ -1957,12 +1941,7 @@ static ssize_t nvt_tp_selftest_store(struct file *file, const char __user *buff,
 
 
 	//---Download Normal FW---
-	if (is_ft_lcm == 0)
-		nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
-	else if (is_ft_lcm == 1)
-		nvt_update_firmware(BOOT_UPDATE_FIRMWARE_DJ_NAME);
-	else if (is_ft_lcm == 3)
-		nvt_update_firmware(BOOT_UPDATE_FIRMWARE_DJ_36672D_NAME);
+	nvt_update_firmware(BOOT_UPDATE_FIRMWARE_NAME);
 
 	mutex_unlock(&ts->lock);
 
@@ -1986,9 +1965,7 @@ static const struct file_operations nvt_tp_selftest_fops = {
 int32_t nvt_tp_selftest_proc_init(void)
 {
 	int32_t ret = 0;
-	uint16_t mode = 0666;
-
-	NVT_proc_tp_selftest_entry = proc_create("tp_selftest", mode, NULL, &nvt_tp_selftest_fops);
+	NVT_proc_tp_selftest_entry = proc_create("tp_selftest", 0664, NULL, &nvt_tp_selftest_fops);
 	if (NVT_proc_tp_selftest_entry == NULL) {
 		NVT_ERR("create proc/tp_selftest Failed!\n");
 		ret = -1;

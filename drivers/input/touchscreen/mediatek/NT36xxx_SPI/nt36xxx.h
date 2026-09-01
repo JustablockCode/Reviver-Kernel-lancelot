@@ -1,9 +1,8 @@
 /*
  * Copyright (C) 2010 - 2018 Novatek, Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
- * $Revision: 46000 $
- * $Date: 2019-06-12 14:25:52 +0800 (周三, 12 6月 2019) $
+ * $Revision: 63020 $
+ * $Date: 2020-05-26 16:16:35 +0800 (周二, 26 5月 2020) $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,12 +23,13 @@
 #include <linux/of.h>
 #include <linux/spi/spi.h>
 #include <linux/uaccess.h>
+#include <linux/hqsysfs.h>
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
 
-#include "nt36672_mem_map.h"
+#include "nt36xxx_mem_map.h"
 
 #ifdef CONFIG_MTK_SPI
 /* Please copy mt_spi.h file under mtk spi driver folder */
@@ -40,16 +40,29 @@
 #include <linux/platform_data/spi-mt65xx.h>
 #endif
 
-#define NVT_DEBUG 1
-#define NVT_LOCKDOWN 1
+/* Huaqin modify for HQ-131657 by feiwen at 2021/06/03 start */
+#define TP_RESUME_EN 0
+/* Huaqin modify for HQ-131657 by feiwen at 2021/06/03 end */
+
+/* Huaqin modify for HQ-131657 by liunianliang at 2021/06/16 start */
+#define TP_SUSPEND_EN 0
+/* Huaqin modify for HQ-131657 by liunianliang at 2021/06/16 end */
+
+#define NVT_DEBUG 0
+#define NVT_NDEBUG 1
+/*BSP.Tp - 2020.11.05 -add NVT_LOCKDOWN - start*/
+#define NVT_LOCKDOWN 0
+/*BSP.Tp - 2020.11.05 -add NVT_LOCKDOWN, end*/
 //---GPIO number---
 #define NVTTOUCH_RST_PIN 980
 #define NVTTOUCH_INT_PIN 943
+/*BSP.Tp - 2020.11.05 -add NVT_LOCKDOWN - start*/
 #define TP_LOCKDOWN_INFO "tp_lockdown_info"
 #if NVT_LOCKDOWN
 int32_t nvt_proc_tp_lockdown_info(void);
 void nvt_lockdown_proc_deinit(void);
 #endif
+/*BSP.Tp - 2020.11.05 -add NVT_LOCKDOWN, end*/
 
 //---INT trigger mode---
 //#define IRQ_TYPE_EDGE_RISING 1
@@ -63,56 +76,83 @@ void nvt_lockdown_proc_deinit(void);
 #if NVT_DEBUG
 #define NVT_LOG(fmt, args...)    pr_err("[%s] %s %d: " fmt, NVT_SPI_NAME, __func__, __LINE__, ##args)
 #else
-#define NVT_LOG(fmt, args...)    pr_info("[%s] %s %d: " fmt, NVT_SPI_NAME, __func__, __LINE__, ##args)
+#if NVT_NDEBUG
+#define NVT_LOG(fmt, args...) ((void)0)
+#else
+#define NVT_LOG(fmt, args...)    pr_debug("[%s] %s %d: " fmt, NVT_SPI_NAME, __func__, __LINE__, ##args)
+#endif
 #endif
 #define NVT_ERR(fmt, args...)    pr_err("[%s] %s %d: " fmt, NVT_SPI_NAME, __func__, __LINE__, ##args)
 
 //---Input device info.---
 #define NVT_TS_NAME "NVTCapacitiveTouchScreen"
 
-
+#define NVT_IRQ_SWITCH 1
 //---Touch info.---
 #define TOUCH_DEFAULT_MAX_WIDTH 1080
+#ifdef CONFIG_TARGET_PRODUCT_SELENECOMMON
+#define TOUCH_DEFAULT_MAX_HEIGHT 2400
+#else
 #define TOUCH_DEFAULT_MAX_HEIGHT 2340
+#endif
 #define TOUCH_MAX_FINGER_NUM 10
 #define TOUCH_KEY_NUM 0
+#define	WAKEUP_OFF		0x04
+#define	WAKEUP_ON		0x05
+extern bool nvt_gesture_flag;
 #if TOUCH_KEY_NUM > 0
 extern const uint16_t touch_key_array[TOUCH_KEY_NUM];
 #endif
 #define TOUCH_FORCE_NUM 1000
 
 /* Enable only when module have tp reset pin and connected to host */
+/* Huaqin modify for TP not need tp reset by zhangjiangbin at 2021/07/13 start */
+#ifdef CONFIG_TARGET_PRODUCT_MERLINCOMMON
+#define NVT_TOUCH_SUPPORT_HW_RST 1
+#else
 #define NVT_TOUCH_SUPPORT_HW_RST 0
+#endif
+
+/* Huaqin modify for TP not need tp reset by zhangjiangbin at 2021/07/13 end */
 
 //---Customerized func.---
 #define NVT_TOUCH_PROC 1
 #define NVT_TOUCH_EXT_PROC 1
+#ifdef CONFIG_TOUCHSCREEN_NT36xxx_MP_CTRLRAM
 #define NVT_TOUCH_MP 1
+#else
+#define NVT_TOUCH_MP 0
+#endif
 #define MT_PROTOCOL_B 1
 #define WAKEUP_GESTURE 1
-#define TP_SELFTEST 1
+#define TP_SELFTEST 0
+#if	TP_SELFTEST
+extern	int32_t	nvt_tp_selftest_proc_init(void);
+extern	void	nvt_tp_selftest_proc_deinit(void);
+#endif
 #if WAKEUP_GESTURE
 extern const uint16_t gesture_key_array[];
 #endif
 #define BOOT_UPDATE_FIRMWARE 1
-#define BOOT_UPDATE_FIRMWARE_NAME "nvt_tm_fw.bin"
-#define MP_UPDATE_FIRMWARE_NAME   "nvt_tm_mp.bin"
-#define BOOT_UPDATE_FIRMWARE_DJ_NAME "nvt_dj_fw.bin"
-#define MP_UPDATE_FIRMWARE_DJ_NAME   "nvt_dj_mp.bin"
-#define BOOT_UPDATE_FIRMWARE_DJ_36672D_NAME "nvt_dj_72d_fw.bin"
-#define MP_UPDATE_FIRMWARE_DJ_36672D_NAME   "nvt_dj_72d_mp.bin"
-#define POINT_DATA_CHECKSUM 1
+/*BSP.TP - add tp compare - 20201116 - Start*/
+extern char *BOOT_UPDATE_FIRMWARE_NAME;
+extern char *MP_UPDATE_FIRMWARE_NAME;
+/*BSP.TP - add tp compare - 20201116 - End*/
+#define POINT_DATA_CHECKSUM 0
 #define POINT_DATA_CHECKSUM_LEN 65
 
 //---ESD Protect.---
+/* Huaqin modify for HQ-140017 by caogaojie at 2021/07/05 start */
 #define NVT_TOUCH_ESD_PROTECT 0
 #define NVT_TOUCH_ESD_CHECK_PERIOD 1500	/* ms */
 #define NVT_TOUCH_WDT_RECOVERY 1
-#define NVT_TOUCH_ESD_DISP_RECOVERY 1
-
-#define	WAKEUP_OFF	0x04
-#define	WAKEUP_ON	0x05
-
+#define NVT_TOUCH_ESD_DISP_RECOVERY 0
+#ifdef CONFIG_TARGET_PRODUCT_SELENECOMMON
+#define NVT_TOUCH_VDD_TP_RECOVERY 1
+#else
+#define NVT_TOUCH_VDD_TP_RECOVERY 0
+#endif
+/* Huaqin modify for HQ-140017 by caogaojie at 2021/07/05 end */
 struct nvt_ts_data {
 	struct spi_device *client;
 	struct input_dev *input_dev;
@@ -145,23 +185,21 @@ struct nvt_ts_data {
 	uint8_t carrier_system;
 	uint8_t hw_crc;
 	uint16_t nvt_pid;
-	uint8_t rbuf[1025];
+	uint8_t *rbuf;
 	uint8_t *xbuf;
 	struct mutex xbuf_lock;
-	struct workqueue_struct *event_wq;
-	struct work_struct resume_work;
 	bool irq_enabled;
+/*BSP.Tp - 2020.11.05 -add NVT_LOCKDOWN - start*/
 	char lockdowninfo[17];
+/*BSP.Tp - 2020.11.05 -add NVT_LOCKDOWN - end*/
 #ifdef CONFIG_MTK_SPI
 	struct mt_chip_conf spi_ctrl;
 #endif
 #ifdef CONFIG_SPI_MT65XX
     struct mtk_chip_config spi_ctrl;
 #endif
-#ifdef CONFIG_PM
-	bool dev_pm_suspend;
-	struct completion dev_pm_resume_completion;
-#endif
+/*BSP.TP add nvt_irq modified in 20201111.Start*/
+	spinlock_t irq_lock;
 };
 
 #if NVT_TOUCH_PROC
@@ -192,14 +230,16 @@ typedef enum {
 
 #define DUMMY_BYTES (1)
 #define NVT_TRANSFER_LEN	(63*1024)
+#define NVT_READ_LEN		(2*1024)
 
 typedef enum {
 	NVTWRITE = 0,
 	NVTREAD  = 1
 } NVT_SPI_RW;
-
+/* Huaqin modify for HQ-144782 by caogaojie at 2021/07/05 start */
 #if NVT_TOUCH_ESD_DISP_RECOVERY
 #define ILM_CRC_FLAG        0x01
+#define DLM_CRC_FLAG        0x02
 #define CRC_DONE            0x04
 #define F2C_RW_READ         0x00
 #define F2C_RW_WRITE        0x01
@@ -215,7 +255,7 @@ typedef enum {
 #define TOUCH_DATA_ADDR     0x20000
 #define DISP_OFF_ADDR       0x2800
 #endif /* NVT_TOUCH_ESD_DISP_RECOVERY */
-
+/* Huaqin modify for HQ-144782 by caogaojie at 2021/07/05 end */
 //---extern structures---
 extern struct nvt_ts_data *ts;
 
@@ -239,5 +279,10 @@ int32_t nvt_write_addr(uint32_t addr, uint8_t data);
 #if NVT_TOUCH_ESD_PROTECT
 extern void nvt_esd_check_enable(uint8_t enable);
 #endif /* #if NVT_TOUCH_ESD_PROTECT */
-
+/* Huaqin modify for HQ-144782 by caogaojie at 2021/07/05 start */
+#if NVT_TOUCH_VDD_TP_RECOVERY
+void nvt_bootloader_reset_locked(void);
+int32_t nvt_esd_vdd_tp_recovery(void);
+#endif
+/* Huaqin modify for HQ-144782 by caogaojie at 2021/07/05 end */
 #endif /* _LINUX_NVT_TOUCH_H */
