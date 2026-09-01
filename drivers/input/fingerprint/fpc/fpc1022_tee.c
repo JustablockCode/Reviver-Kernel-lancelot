@@ -66,11 +66,15 @@
 #define FPC1022_RESET_HIGH2_US 5000
 
 #define FPC_IRQ_DEV_NAME         "fpc_irq"
-#define FPC_TTW_HOLD_TIME 2000
+#define FPC_TTW_HOLD_TIME 500
 
 #define     FPC102X_REG_HWID      252
 #define FPC1022_CHIP 0x1000
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+#define FPC1022_CHIP_MASK_SENSOR_TYPE 0xf000
+#else
 #define FPC1022_CHIP_MASK_SENSOR_TYPE 0xff00
+#endif
 
 #define GPIO_GET(pin) __gpio_get_value(pin)	//get input pin value
 
@@ -394,6 +398,7 @@ static int fpc1022_platform_probe(struct platform_device *pldev)
 		goto err_lookup_state;
 	}
 
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 	fpc1022->st_spi_cs_h = pinctrl_lookup_state(fpc1022->pinctrl, "spi_cs_high");
 	if (IS_ERR(fpc1022->st_spi_cs_h)) {
 		ret = PTR_ERR(fpc1022->st_spi_cs_h);
@@ -408,6 +413,7 @@ static int fpc1022_platform_probe(struct platform_device *pldev)
 	mdelay(10);
 	//set cs from gpio mode to spi mode
 	pinctrl_select_state(fpc1022->pinctrl, fpc1022->st_spi_cs_h);
+#endif
 
 	fpc1022_get_irqNum(fpc1022);
 
