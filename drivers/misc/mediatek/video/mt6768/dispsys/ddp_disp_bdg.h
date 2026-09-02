@@ -19,12 +19,6 @@
 #define _Disable_LP_TX_L023_
 //#define _G_MODE_EN_
 //#define _HIGH_FRM_
-#ifdef _HIGH_FRM_	 //for cmd 120Hz
-#define RXTX_RATIO		(299)
-#else
-#define RXTX_RATIO		(225) //for vdo 90Hz
-//#define RXTX_RATIO		(230) //for vdo 120Hz
-#endif
 
 enum DISP_BDG_ENUM {
 	DISP_BDG_DSI0 = 0,
@@ -99,6 +93,9 @@ unsigned int get_bdg_data_rate(void);
 int set_bdg_data_rate(unsigned int data_rate);
 unsigned int get_bdg_line_cycle(void);
 unsigned int get_dsc_state(void);
+unsigned int get_bdg_rxtx_ratio(void);
+unsigned int get_bdg_mm_clk(void);
+int mtk_panel_compare(void);
 void set_mt6382_init(unsigned int value);
 unsigned int get_mt6382_init(void);
 unsigned int get_bdg_tx_mode(void);
