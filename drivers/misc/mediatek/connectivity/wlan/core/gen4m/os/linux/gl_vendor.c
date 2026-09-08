@@ -221,6 +221,8 @@ const struct nla_policy nla_get_acs_policy[
 	[WIFI_VENDOR_ATTR_ACS_CH_LIST] = { .type = NLA_UNSPEC },
 	[WIFI_VENDOR_ATTR_ACS_FREQ_LIST] = { .type = NLA_UNSPEC },
 #endif
+	[WIFI_VENDOR_ATTR_ACS_ACS_EDMG_ENABLED] = { .type = NLA_FLAG },
+	[WIFI_VENDOR_ATTR_ACS_ACS_EDMG_CHANNEL] = { .type = NLA_U8 },
 };
 
 const struct nla_policy nla_get_apf_policy[
@@ -2463,6 +2465,74 @@ int mtk_cfg80211_vendor_acs(struct wiphy *wiphy,
 			for (i = 0; i < ch_list_count; i++)
 				ch_list[i] = freq[i];
 		}
+	} else if (tb[WIFI_VENDOR_ATTR_ACS_CH_LIST]) {
+		uint8_t *channels =
+			nla_data(tb[WIFI_VENDOR_ATTR_ACS_CH_LIST]);
+
+		ch_list_count = nla_len(tb[WIFI_VENDOR_ATTR_ACS_CH_LIST]);
+		if (ch_list_count) {
+			if (ch_list_count > MAX_CHN_NUM) {
+				DBGLOG(REQ, ERROR, "Invalid ch count.\n");
+				rStatus = -EINVAL;
+				goto exit;
+			}
+			ch_list = kalMemAlloc(
+				sizeof(uint32_t) * ch_list_count,
+				VIR_MEM_TYPE);
+			if (ch_list == NULL) {
+				DBGLOG(REQ, ERROR, "allocate ch_list fail.\n");
+				rStatus = -ENOMEM;
+				goto exit;
+			}
+
+			for (i = 0; i < ch_list_count; i++) {
+				enum ENUM_BAND eBand = (hw_mode == P2P_VENDOR_ACS_HW_MODE_11A) ?
+					BAND_5G : BAND_2G4;
+				ch_list[i] = nicChannelNum2Freq(channels[i], eBand) / 1000;
+			}
+		}
+	}
+
+	if (!ch_list_count) {
+		struct RF_CHANNEL_INFO aucChList[MAX_CHN_NUM];
+		uint8_t ucNumCh = 0;
+
+		DBGLOG(REQ, INFO, "ACS: No freq/ch list from hostapd, auto-populating for hw_mode %d\n", hw_mode);
+		if (hw_mode == P2P_VENDOR_ACS_HW_MODE_11B ||
+		    hw_mode == P2P_VENDOR_ACS_HW_MODE_11G) {
+			rlmDomainGetChnlList(prGlueInfo->prAdapter, BAND_2G4, TRUE,
+				MAX_CHN_NUM, &ucNumCh, aucChList);
+		} else if (hw_mode == P2P_VENDOR_ACS_HW_MODE_11A) {
+			rlmDomainGetChnlList(prGlueInfo->prAdapter, BAND_5G, TRUE,
+				MAX_CHN_NUM, &ucNumCh, aucChList);
+		} else {
+			/* 11ANY or default: query 2.4G first, then 5G */
+			rlmDomainGetChnlList(prGlueInfo->prAdapter, BAND_2G4, TRUE,
+				MAX_CHN_NUM, &ucNumCh, aucChList);
+			if (ucNumCh < MAX_CHN_NUM) {
+				uint8_t ucNum5G = 0;
+				rlmDomainGetChnlList(prGlueInfo->prAdapter, BAND_5G, TRUE,
+					MAX_CHN_NUM - ucNumCh, &ucNum5G, &aucChList[ucNumCh]);
+				ucNumCh += ucNum5G;
+			}
+		}
+
+		if (ucNumCh > 0) {
+			ch_list = kalMemAlloc(sizeof(uint32_t) * ucNumCh, VIR_MEM_TYPE);
+			if (ch_list == NULL) {
+				DBGLOG(REQ, ERROR, "allocate ch_list fail.\n");
+				rStatus = -ENOMEM;
+				goto exit;
+			}
+			ch_list_count = 0;
+			for (i = 0; i < ucNumCh; i++) {
+				uint32_t freq_mhz = nicChannelNum2Freq(aucChList[i].ucChannelNum,
+									aucChList[i].eBand) / 1000;
+				if (freq_mhz != 0) {
+					ch_list[ch_list_count++] = freq_mhz;
+				}
+			}
+		}
 	}
 
 	if (!ch_list_count) {
@@ -2544,7 +2614,7 @@ int mtk_cfg80211_vendor_acs(struct wiphy *wiphy,
 exit:
 	if (ch_list)
 		kalMemFree(ch_list, VIR_MEM_TYPE,
-				sizeof(uint8_t) * ch_list_count);
+				sizeof(uint32_t) * ch_list_count);
 	if (rStatus == WLAN_STATUS_SUCCESS) {
 		reply_skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy,
 				NLMSG_HDRLEN);
