@@ -243,6 +243,8 @@ static const struct reserved_mem_ops rmem_cma_ops = {
 	.device_release = rmem_cma_device_release,
 };
 
+#define SSMR_CMA_CAP	(256UL * SZ_1M)
+
 static int __init rmem_cma_setup(struct reserved_mem *rmem)
 {
 	phys_addr_t align = PAGE_SIZE << max(MAX_ORDER - 1, pageblock_order);
@@ -258,6 +260,21 @@ static int __init rmem_cma_setup(struct reserved_mem *rmem)
 	if ((rmem->base & mask) || (rmem->size & mask)) {
 		pr_err("Reserved memory: incorrect alignment of CMA region\n");
 		return -EINVAL;
+	}
+
+	if (rmem->name && !strcmp(rmem->name, "ssmr-reserved-cma_memory") &&
+	    rmem->size > SSMR_CMA_CAP) {
+		phys_addr_t tail = rmem->size - SSMR_CMA_CAP;
+
+		if (!memblock_free(rmem->base + SSMR_CMA_CAP, tail)) {
+			pr_info("Reserved memory: %s capped at %lu MiB, %lu MiB returned\n",
+				rmem->name, (unsigned long)SSMR_CMA_CAP / SZ_1M,
+				(unsigned long)tail / SZ_1M);
+			rmem->size = SSMR_CMA_CAP;
+		} else {
+			pr_warn("Reserved memory: could not shrink %s, leaving %lu MiB\n",
+				rmem->name, (unsigned long)rmem->size / SZ_1M);
+		}
 	}
 
 	err = cma_init_reserved_mem(rmem->base, rmem->size, 0, rmem->name, &cma);
