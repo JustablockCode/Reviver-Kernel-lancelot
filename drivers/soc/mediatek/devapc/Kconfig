@@ -54,7 +54,7 @@ config DEVAPC_MT6833
 	depends on MACH_MT6833 || COMPILE_TEST
 	select DEVAPC_ARCH_V2
 	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
+	#select DEVAPC_MMAP_DEBUG
 	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
 	help
 	  Say yes here to enable support Mediatek MT6833
@@ -67,7 +67,7 @@ config DEVAPC_MT6853
 	depends on MACH_MT6853 || COMPILE_TEST
 	select DEVAPC_ARCH_V2
 	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
+	#select DEVAPC_MMAP_DEBUG
 	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
 	help
 	  Say yes here to enable support Mediatek MT6853
@@ -80,7 +80,7 @@ config DEVAPC_MT6873
 	depends on MACH_MT6873 || COMPILE_TEST
 	select DEVAPC_ARCH_V2
 	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
+	#select DEVAPC_MMAP_DEBUG
 	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
 	help
 	  Say yes here to enable support Mediatek MT6873
@@ -93,7 +93,7 @@ config DEVAPC_MT6877
 	depends on MACH_MT6877 || COMPILE_TEST
 	select DEVAPC_ARCH_V2
 	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
+	#select DEVAPC_MMAP_DEBUG
 	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
 	help
 	  Say yes here to enable support Mediatek MT6877
@@ -106,7 +106,7 @@ config DEVAPC_MT6885
 	depends on MACH_MT6885 || MACH_MT6893 || COMPILE_TEST
 	select DEVAPC_ARCH_V2
 	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
+	#select DEVAPC_MMAP_DEBUG
 	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
 	help
 	  Say yes here to enable support Mediatek MT6885
@@ -131,7 +131,7 @@ config DEVAPC_MT6768
 	depends on MACH_MT6768 || COMPILE_TEST
 	select DEVAPC_ARCH_V1
 	select MTK_DEVAPC
-	select DEVAPC_MMAP_DEBUG
+	#select DEVAPC_MMAP_DEBUG
 	select DEVAPC_SWP_SUPPORT if MTK_ENG_BUILD
 	help
 	  Say yes here to enable support Mediatek MT6768
