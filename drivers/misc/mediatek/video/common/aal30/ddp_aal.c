@@ -555,32 +555,25 @@ static bool disp_aal_read_single_hist(enum DISP_MODULE_ENUM module)
 	const int color_offset = 0;
 	const enum DISP_MODULE_ENUM color_module = DISP_MODULE_COLOR0;
 #endif
-	bool read_success = false;
 	int i;
 
+	if (unlikely(atomic_read(&g_aal_is_clock_on[index_of_aal(module)]) != 1)) {
+		AAL_DBG("clock is off");
+		return false;
+	}
+
 	for (i = 0; i < AAL_HIST_BIN; i++) {
-		read_success = disp_aal_reg_get(module,
-			DISP_AAL_STATUS_00 + offset + (i << 2),
-			&g_aal_hist.maxHist[i]);
-		if (read_success != true)
-			break;
+		g_aal_hist.maxHist[i] = DISP_REG_GET(DISP_AAL_STATUS_00 + offset + (i << 2));
 	}
 #ifdef AAL_HAS_YHIST
 	for (i = 0; i < AAL_HIST_BIN; i++) {
-		read_success = disp_aal_reg_get(module,
-			DISP_Y_HISTOGRAM_00 + offset + (i << 2),
-			&g_aal_hist.yHist[i]);
-		if (read_success != true)
-			break;
+		g_aal_hist.yHist[i] = DISP_REG_GET(DISP_Y_HISTOGRAM_00 + offset + (i << 2));
 	}
 #endif
-	if (read_success == true) {
-		read_success = disp_color_reg_get(color_module,
-			DISP_COLOR_TWO_D_W1_RESULT + color_offset,
-				&g_aal_hist.colorHist);
-	}
 
-	return read_success;
+	return disp_color_reg_get(color_module,
+		DISP_COLOR_TWO_D_W1_RESULT + color_offset,
+		&g_aal_hist.colorHist);
 }
 
 static void disp_aal_clear_irq(enum DISP_MODULE_ENUM module, bool cleared,
