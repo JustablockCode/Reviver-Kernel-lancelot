@@ -14,7 +14,11 @@
 #include <linux/poll.h>
 #include <linux/slab.h>
 
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 #define SIMTRAY_GPIO 371
+#else
+#define SIMTRAY_GPIO 372
+#endif
 
 struct simtray_data {
 	struct device *dev;

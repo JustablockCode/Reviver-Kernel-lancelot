@@ -128,11 +128,16 @@ static enum power_supply_property battery_props[] = {
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_INPUT_SUSPEND,
+	POWER_SUPPLY_PROP_HIZ_ENABLE,
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
 	POWER_SUPPLY_PROP_BATT_ID,
 	POWER_SUPPLY_PROP_BATTERY_TYPE,
 	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
 	POWER_SUPPLY_PROP_TIME_TO_FULL_NOW,
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	POWER_SUPPLY_PROP_BATTERY_VENDOR,
+	POWER_SUPPLY_PROP_BATTERY_ID_VOLTAGE,
+#endif
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_REVERSE_LIMIT,
 };
@@ -471,17 +476,38 @@ static int bms_get_property(struct power_supply *psy,
 		val->intval = my_battery_id_voltage;
 		break;
 	case POWER_SUPPLY_PROP_BATTERY_TYPE:
-		pr_info("gm.battery_id :%d.\n", gm.battery_id);
+		pr_info("wlc raw battery_type index :%d.\n", gm.battery_id);
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 		val->intval = gm.battery_id;
+#else
+		if (gm.battery_id == 4) {
+			val->intval = 3;
+		} else if (gm.battery_id == 5){
+			val->intval = 1;
+		} else {
+			val->intval = gm.battery_id;
+		}
+#endif
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
-		pr_err("mtk_qmax_agin:%d qmax:%d\n", mtk_qmax_aging, qmax);
+		pr_err("gm.algo_qmax:%d gm.aging_factor:%d\n", gm.algo_qmax, gm.aging_factor);
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 		if (mtk_qmax_aging < 50200)
 			qmax = mtk_qmax_aging * 100;
+#else
+		qmax = gm.algo_qmax * gm.aging_factor / 100;
+#endif
 		val->intval = qmax;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 		val->intval = 5020000;
+#else
+		if(gm.battery_id == 0 || gm.battery_id == 1)
+			val->intval = 5000000;
+		else
+			val->intval = 6000000;
+#endif
 		break;
 	case POWER_SUPPLY_PROP_RESISTANCE:
 		val->intval = 140000;
@@ -564,6 +590,10 @@ void otg_thermal_limit(void)
 	if (!primary_charger) {
 		pr_err("primary_charger is NULL\n");
 		primary_charger = get_charger_by_name("primary_chg");
+		if (!primary_charger) {
+			pr_err("primary_charger is NULL again\n");
+			return;
+		}
 	}
 
 	if (otg_limit == 1) {
@@ -572,6 +602,10 @@ void otg_thermal_limit(void)
 		charger_dev_set_otg_current(primary_charger, 1800000);
 	}
 }
+
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+int get_charger_type(void);
+#endif
 
 static int battery_get_property(struct power_supply *psy,
 	enum power_supply_property psp,
@@ -610,8 +644,17 @@ static int battery_get_property(struct power_supply *psy,
 		cycle_count = gm.bat_cycle;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 		charger_dev_get_charger_type(primary_charger, &type);
+#else
+		type = get_charger_type();
+#endif
+		pr_err("ljj charger_dev_get_charger_type = %d\n",type);
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 		if (type > 3 || type < 0)
+#else
+		if (type > 9 || type < 0)
+#endif
 			type = 0;
 		val->intval = type;
 		break;
@@ -630,7 +673,14 @@ static int battery_get_property(struct power_supply *psy,
 			val->intval = data->BAT_CAPACITY;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 		val->intval = 5020000;
+#else
+		if(gm.battery_id == 0 || gm.battery_id == 1)
+			val->intval = 5000000;
+		else
+			val->intval = 6000000;
+#endif
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		b_ischarging = gauge_get_current(&fgcurrent);
@@ -643,9 +693,13 @@ static int battery_get_property(struct power_supply *psy,
 		val->intval = battery_get_bat_avg_current() * 100;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
-		pr_err("mtk_qmax_agin:%d qmax:%d\n", mtk_qmax_aging, qmax);
+		pr_err("gm.algo_qmax:%d gm.aging_factor:%d\n", gm.algo_qmax, gm.aging_factor);
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 		if (mtk_qmax_aging < 50200)
 			qmax = mtk_qmax_aging * 100;
+#else
+		qmax = gm.algo_qmax * gm.aging_factor / 100;
+#endif
 		val->intval = qmax;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
@@ -687,6 +741,7 @@ static int battery_get_property(struct power_supply *psy,
 		ret = 0;
 		break;
 	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
+	case POWER_SUPPLY_PROP_HIZ_ENABLE:
 		val->intval = charger_manager_is_input_suspend();
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
@@ -698,6 +753,14 @@ static int battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_BATTERY_TYPE:
 		val->intval = gm.battery_id;
 		break;
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	case POWER_SUPPLY_PROP_BATTERY_VENDOR:
+		val->intval = gm.battery_id;
+		break;
+	case POWER_SUPPLY_PROP_BATTERY_ID_VOLTAGE:
+		val->intval = my_battery_id_voltage;
+		break;
+#endif
 	case POWER_SUPPLY_PROP_REVERSE_LIMIT:
 		val->intval = otg_limit;
 		break;
@@ -718,6 +781,11 @@ static int battery_set_property(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
 		charger_manager_set_input_suspend(val->intval);
+		break;
+	case POWER_SUPPLY_PROP_HIZ_ENABLE:
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+		charger_manager_set_hiz_enable(val->intval);
+#endif
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
 		charger_manager_set_prop_system_temp_level(val->intval);
@@ -743,6 +811,7 @@ static int battery_prop_is_writeable(struct power_supply *psy,
 {
 	switch (psp) {
 	case POWER_SUPPLY_PROP_INPUT_SUSPEND:
+	case POWER_SUPPLY_PROP_HIZ_ENABLE:
 		return 1;
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
 		return 1;
@@ -4187,7 +4256,11 @@ static int battery_callback(
 	case CHARGER_NOTIFY_EOC:
 		{
 /* CHARGING FULL */
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 			if (force_get_tbat(true) < 45)
+#else
+			if (force_get_tbat(true) < 48)
+#endif
 				notify_fg_chr_full();
 			battery_update(&battery_main);
 			pr_err("battery is full\n");
@@ -4616,6 +4689,10 @@ static void otg_boost_limit_work(struct work_struct *work)
 	if (!primary_charger) {
 		pr_err("primary_charger is NULL\n");
 		primary_charger = get_charger_by_name("primary_chg");
+		if (!primary_charger) {
+			pr_err("primary_charger is NULL again\n");
+			return;
+		}
 	}
 	if (otg_limit == 1) {
 		pr_err("phone is to high skip batterty otg boost check\n");
@@ -4628,7 +4705,11 @@ static void otg_boost_limit_work(struct work_struct *work)
 	if (count_high > 888888)
 		count_high = 0;
 
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 	if (current_now > 3600000) {
+#else
+	if (current_now > 3400000) {
+#endif
 		count_high++;
 		count_low = 0;
 	} else if (current_now < 2400000) {
@@ -4636,11 +4717,19 @@ static void otg_boost_limit_work(struct work_struct *work)
 		count_high = 0;
 	}
 
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 	if (count_low >= 6)	{
+#else
+	if (count_low >= 3)	{
+#endif
 		charger_dev_set_otg_current(primary_charger, 1800000);
 		otg_ibat_limit = 0;
 		pr_err("dhx---set otg current 1.8A\n");
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 	} else if (count_high == 6)	{
+#else
+	} else if (count_high == 3)	{
+#endif
 		charger_dev_set_otg_current(primary_charger, 1000000);
 		otg_ibat_limit = 1;
 		pr_err("dhx---set otg current 1A\n");

@@ -131,6 +131,24 @@ int rgbw_flush_report(void)
 	return err;
 }
 
+int ps_event_report_t(struct data_unit_t *pevent, int status, int64_t time_stamp)
+{
+	int err = 0;
+	struct sensor_event event;
+
+	memset(&event, 0, sizeof(struct sensor_event));
+
+	event.flush_action = DATA_ACTION;
+	event.time_stamp = time_stamp;
+	event.word[0] = pevent->proximity_t.oneshot + 1;
+	event.word[1] = 0;
+	event.word[2] = pevent->proximity_t.steps;
+	event.status = status;
+	//pr_notice("[ALS/PS]%s! %d, %d, %d, status:%d\n", __func__, event.word[0], event.word[1], event.word[2], status);
+	err = sensor_input_event(alsps_context_obj->ps_mdev.minor, &event);
+	return err;
+}
+
 int ps_data_report_t(int value, int status, int64_t time_stamp)
 {
 	int err = 0;
@@ -1040,6 +1058,12 @@ static int __init early_lcm_name(char *p)
     } else if (memcmp(p, "nt36672", 7) == 0) {
     printk("LCM_name=nt36672A_fhdp_dsi_vdo_tianma_lcm_drv, g_screen_info = 2\n");
     g_screen_info = 1;
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+    } else if(strcmp(p, "dsi_panel_k19a_36_02_0a_dsc_vdo_lcm_drv") == 0) {
+    g_screen_info = 3;
+    } else if(strcmp(p, "dsi_panel_k19a_43_02_0b_dsc_vdo_lcm_drv") == 0) {
+    g_screen_info = 4;
+#endif
     } else
     printk("LCM_name = unknow,\n");
     return 0;
@@ -1395,10 +1419,18 @@ static int alsps_remove(void)
 
 	return 0;
 }
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+extern int alsps_ldo3_driver_init(void);
+#endif
 
 static int __init alsps_init(void)
 {
 	pr_debug("%s\n", __func__);
+
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+  	pr_debug("%s: call alsps_ldo3_driver_init\n", __func__);
+    	alsps_ldo3_driver_init();
+#endif
 
 	if (alsps_probe()) {
 		pr_err("failed to register alsps driver\n");

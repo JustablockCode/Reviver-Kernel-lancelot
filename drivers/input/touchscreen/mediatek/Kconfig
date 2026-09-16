@@ -30,17 +30,6 @@ config TOUCHSCREEN_PHYSICAL_ROTATION_WITH_LCM
 	  the reported coordination to diagonal position.
 
 	  If unsure, say Y.
-config TOUCHSCREEN_MTK_SOLOMON
-	bool "SOLOMON for Mediatek package"
-	default n
-	help
-	  Say Y here if you have SOLOMON touch panel.
-
-	  If unsure, say N.
-
-	  To compile this dirver as a module, choose M here: the
-	  module will be called.
-
 
 config TOUCHSCREEN_MTK_FOCALTECH_TS
 	bool "FOCALTECH_TS for Mediatek package"
@@ -191,5 +180,6 @@ source "drivers/input/touchscreen/mediatek/hxchipset_hx83102p/Kconfig"
 source "drivers/input/touchscreen/mediatek/goodix_berlin_driver/Kconfig"
 source "drivers/input/touchscreen/mediatek/NT36xxx_SPI/Kconfig"
 source "drivers/input/touchscreen/mediatek/focaltech_touch/Kconfig"
+source "drivers/input/touchscreen/mediatek/focaltech_touch_k19a/Kconfig"
 source "drivers/input/touchscreen/mediatek/FT8719P/Kconfig"
 endif

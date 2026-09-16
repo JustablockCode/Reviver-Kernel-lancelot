@@ -34,7 +34,7 @@ typedef struct {
 	int voltage_max;
 	PCBA_CONFIG version;
 } board_id_map_t;
-#if defined(TARGET_PRODUCT_LANCELOT) || defined(TARGET_PRODUCT_SHIVA)
+#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
 
 static int pcba_config;
 static board_id_map_t PCBA_DETECT_LANCELOT_CN[] = {
@@ -83,6 +83,12 @@ static board_id_map_t PCBA_DETECT_POCO_INDIA[] = {
 	{406, 500, PCBA_J19P_POCO_MP_INDIA},
 };
 
+#elif defined(CONFIG_TARGET_PRODUCT_SELENE)
+int hq_selene_pcba_config;
+
+static int selene_pcba_config;
+static int selene_pcba_stage;
+static int selene_pcba_count;
 
 #else
 static const board_id_map_t board_id_map[] = {
@@ -114,17 +120,19 @@ static const board_id_map_t j15n_board_id_map_ext[] = {
 };
 #endif
 
-#if defined(TARGET_PRODUCT_LANCELOT) || defined(TARGET_PRODUCT_SHIVA)
+#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
 
 static int __init get_pcba_config(char *p)
 {
-	char pcba[10];
+	int ret;
 
-	strlcpy(pcba, p, sizeof(pcba));
+	ret = kstrtoint(p, 10, &pcba_config);
+	if (ret) {
+		printk("[%s]: invalid pcba_config: %s\n", __func__, p);
+		return -EINVAL;
+	}
 
-	printk("[%s]: pcba = %s\n", __func__, pcba);
-
-	pcba_config = pcba[0] - '0';
+	printk("[%s]: pcba_config = %d\n", __func__, pcba_config);
 
 	return 0;
 }
@@ -218,14 +226,76 @@ static bool read_pcba_config_j19(void)
 	pr_err("[%s] read_pcba_config huaqin_pcba_config: 0x%x\n", __func__, huaqin_pcba_config);
 	return true;
 }
+
+#elif defined(CONFIG_TARGET_PRODUCT_SELENE)
+static int __init get_selene_pcba_config(char *p)
+{
+	int ret;
+
+	ret = kstrtoint(p, 10, &selene_pcba_config);
+	if (ret) {
+		printk("[%s]: invalid pcba_config: %s\n", __func__, p);
+		return -EINVAL;
+	}
+
+	printk("[%s]: pcba config = %d\n", __func__, selene_pcba_config);
+
+	hq_selene_pcba_config = selene_pcba_config;
+
+	return 0;
+}
+early_param("pcba_config", get_selene_pcba_config);
+
+static int __init get_selene_pcba_stage(char *p)
+{
+	char stage[10];
+
+	strlcpy(stage, p, sizeof(stage));
+
+	if (kstrtoint(stage, 10, &selene_pcba_stage))
+		return -1;
+
+	printk("[%s]: pcba stage = %d\n", __func__, selene_pcba_stage);
+
+	return 0;
+}
+early_param("pcba_stage", get_selene_pcba_stage);
+
+static int __init get_selene_pcba_count(char *p)
+{
+	char count[10];
+
+	strlcpy(count, p, sizeof(count));
+
+	if (kstrtoint(count, 10, &selene_pcba_count))
+		return -1;
+
+	printk("[%s]: pcba count = %d\n", __func__, selene_pcba_count);
+
+	return 0;
+}
+early_param("pcba_count", get_selene_pcba_count);
+
+static bool read_pcba_config_k19a(void)
+{
+	if (selene_pcba_config == PCBA_UNKNOW) {
+		huaqin_pcba_config = PCBA_UNKNOW;
+		return false;
+	}
+	huaqin_pcba_config = (selene_pcba_stage - 1) * selene_pcba_count + selene_pcba_config;
+	printk("[%s]: huaqin_pcba_config = %d\n", __func__, huaqin_pcba_config);
+	return true;
+}
+
 #else
+
 static bool read_pcba_config(void)
 {
 	int ret = 0;
 	int i = 0, map_size = 0;
 	int auxadc_voltage;
 	int hw_id_gpio, board_id3_gpio;
-	int hw_id_gpio_value, board_id3_gpio_value;
+	int hw_id_gpio_value = 0, board_id3_gpio_value = 0;
 	struct iio_channel *channel;
 	struct device_node *board_id_node;
 	struct platform_device *board_id_dev;
@@ -363,9 +433,11 @@ static int board_id_probe(struct platform_device *pdev)
 		pr_err("[%s] Failed %d!!!\n", __func__, ret);
 		return ret;
 	}
-#if defined(TARGET_PRODUCT_LANCELOT) || defined(TARGET_PRODUCT_SHIVA)
+#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
 
 	read_pcba_config_j19();
+#elif defined(CONFIG_TARGET_PRODUCT_SELENE)
+	read_pcba_config_k19a();
 #else
 	read_pcba_config();
 #endif

@@ -5,7 +5,11 @@
 
 #define pr_fmt(fmt) "<SITUATION> " fmt
 
+#include <hwmsensor.h>
 #include "situation.h"
+#include <SCP_sensorHub.h>
+#include <linux/vmalloc.h>
+
 
 static struct situation_context *situation_context_obj;
 
@@ -111,6 +115,7 @@ int situation_data_report(int handle, uint32_t one_sample_data)
 {
 	return situation_data_report_t(handle, one_sample_data, 0);
 }
+
 int sar_data_report_t(int32_t value[3], int64_t time_stamp)
 {
 	int err = 0, index = -1;
@@ -139,6 +144,31 @@ int sar_data_report_t(int32_t value[3], int64_t time_stamp)
 int sar_data_report(int32_t value[3])
 {
 	return sar_data_report_t(value, 0);
+}
+int sar_cal_report_t(int32_t value[3], int64_t time_stamp)
+{
+	int err = 0, index = -1;
+	struct sensor_event event;
+	struct situation_context *cxt = situation_context_obj;
+
+	memset(&event, 0, sizeof(struct sensor_event));
+
+	index = handle_to_index(ID_SAR);
+	if (index < 0) {
+		pr_err("[%s] invalid index\n", __func__);
+		return -1;
+	}
+	event.time_stamp = time_stamp;
+	event.handle = ID_SAR;
+	event.flush_action = CALI_ACTION;
+	event.word[0] = value[0];
+	event.word[1] = value[1];
+	event.word[2] = value[2];
+	err = sensor_input_event(situation_context_obj->mdev.minor, &event);
+	if (cxt->ctl_context[index].situation_ctl.open_report_data != NULL &&
+		cxt->ctl_context[index].situation_ctl.is_support_wake_lock)
+		__pm_wakeup_event(cxt->ws[index], 250);
+	return err;
 }
 int situation_notify_t(int handle, int64_t time_stamp)
 {
@@ -508,17 +538,48 @@ static int situation_misc_init(struct situation_context *cxt)
 
 	return err;
 }
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+static ssize_t sarcali_update_store(struct device *dev,
+        struct device_attribute *attr, const char *buf,
+        size_t count)
+{
+	uint8_t *cali_buf = NULL;
+	uint32_t *print_buf = NULL;
+	int err = 0;
+
+	cali_buf = vzalloc(count);
+	if (!cali_buf)
+		return -ENOMEM;
+	memcpy(cali_buf, buf, count);
+    print_buf = (uint32_t *)cali_buf;
+    pr_err("%s: sar cali: [%u - 0x%x, %u - 0x%x]\n", __func__, print_buf[0], print_buf[0], 
+					print_buf[1], print_buf[1]);
+
+    err = sensor_cfg_to_hub(ID_SAR, cali_buf, count);
+    if (err < 0) {
+		pr_err("%s: sar set cali err %d\n", __func__, err);
+    }
+	vfree(cali_buf);
+	return count;
+}
+#endif
 
 DEVICE_ATTR_RW(situactive);
 DEVICE_ATTR_RW(situbatch);
 DEVICE_ATTR_RW(situflush);
 DEVICE_ATTR_RO(situdevnum);
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+DEVICE_ATTR_WO(sarcali_update);  //new add
+#endif
 
 static struct attribute *situation_attributes[] = {
 	&dev_attr_situactive.attr,
 	&dev_attr_situbatch.attr,
 	&dev_attr_situflush.attr,
 	&dev_attr_situdevnum.attr,
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	&dev_attr_sarcali_update.attr,
+#endif
 	NULL
 };
 

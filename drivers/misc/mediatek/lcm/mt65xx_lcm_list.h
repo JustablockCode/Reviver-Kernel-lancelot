@@ -348,6 +348,10 @@ extern struct LCM_DRIVER otm1911a_fhdp_dsi_vdo_truly_rt4801_lcm_drv;
 extern struct LCM_DRIVER nt36672c_fhdp_dsi_vdo_120hz_shenchao_6382_lcm_drv;
 extern struct LCM_DRIVER nt36672c_fhdp_dsi_vdo_auo_cphy_90hz_jdi_lcm_drv;
 
+extern struct LCM_DRIVER dsi_panel_k19a_36_02_0a_dsc_vdo_lcm_drv;
+extern struct LCM_DRIVER dsi_panel_k19a_43_02_0b_dsc_vdo_lcm_drv;
+extern struct LCM_DRIVER dsi_panel_k19a_36_03_0c_dsc_vdo_lcm_drv;
+
 extern struct LCM_DRIVER nt36672D_fhdp_dsi_vdo_dijing_j19_lcm_drv;
 extern struct LCM_DRIVER nt36672D_fhdp_dsi_vdo_tianma_lcm_drv;
 

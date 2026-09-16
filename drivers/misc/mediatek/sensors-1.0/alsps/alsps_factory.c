@@ -311,9 +311,13 @@ static long alsps_factory_unlocked_ioctl(struct file *file, unsigned int cmd,
 	case ALSPS_PS_ENABLE_CALI:
 		if (alsps_factory.fops != NULL &&
 			alsps_factory.fops->ps_enable_calibration != NULL) {
-			err = alsps_factory.fops->ps_enable_calibration();
+			err = alsps_factory.fops->ps_enable_calibration(data);
 			if (err < 0) {
 				pr_err("ALSPS_PS_ENABLE_CALI FAIL!\n");
+                if ((err == -EACCES) || (err == -EAGAIN) || (err == -EBUSY)){
+                    pr_err("ALSPS_PS_ENABLE_CALI FAIL! Special return value, directly returned to the upper layer\n");
+                    return err;
+                }
 				return -EINVAL;
 			}
 		} else {

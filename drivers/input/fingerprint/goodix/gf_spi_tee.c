@@ -69,7 +69,7 @@
 #include "gf_spi_tee.h"
 #include  <linux/regulator/consumer.h>
 
-#define WAKELOCK_HOLD_TIME 2000 /* in ms */
+#define WAKELOCK_HOLD_TIME 500 /* in ms */
 
 /**************************defination******************************/
 #define GF_DEV_NAME "goodix_fp"
@@ -218,13 +218,6 @@ static int gf_get_gpio_dts_info(struct gf_device *gf_dev)
 	if (node) {
 		virq = irq_of_parse_and_map(node, 0);
 		gf_debug(ERR_LOG, "[gf][goodix_test] %s virq = %d\n", __func__, virq);
-#ifndef CONFIG_MTK_EIC
-		irq_set_irq_wake(virq, 1);
-		gf_debug(ERR_LOG, "[gf][goodix_test] %s CONFIG_MTK_EIC define\n", __func__);
-#else
-		enable_irq_wake(virq);
-		gf_debug(ERR_LOG, "[gf][goodix_test] %s CONFIG_MTK_EIC not define\n", __func__);
-#endif
 		pdev = of_find_device_by_node(node);
 		if (pdev) {
 			gf_dev->pinctrl_gpios = devm_pinctrl_get(&pdev->dev);
@@ -268,6 +261,27 @@ static int gf_get_gpio_dts_info(struct gf_device *gf_dev)
 		return ret;
 	}
 #endif
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	gf_dev->pins_reset_high = pinctrl_lookup_state(gf_dev->pinctrl_gpios, "reset_high");
+	if (IS_ERR(gf_dev->pins_reset_high)) {
+		ret = PTR_ERR(gf_dev->pins_reset_high);
+		gf_debug(ERR_LOG, "%s can't find fingerprint pinctrl reset_high\n", __func__);
+		return ret;
+	}
+	gf_dev->pins_reset_low = pinctrl_lookup_state(gf_dev->pinctrl_gpios, "reset_low");
+	if (IS_ERR(gf_dev->pins_reset_low)) {
+		ret = PTR_ERR(gf_dev->pins_reset_low);
+		gf_debug(ERR_LOG, "%s can't find fingerprint pinctrl reset_low\n", __func__);
+		return ret;
+	}
+	gf_dev->pins_spi_mode = pinctrl_lookup_state(gf_dev->pinctrl_gpios, "spi_mode");
+	if (IS_ERR(gf_dev->pins_spi_mode)) {
+		ret = PTR_ERR(gf_dev->pins_spi_mode);
+		gf_debug(ERR_LOG, "%s can't find fingerprint pinctrl spi_mode\n", __func__);
+		return ret;
+	}
+	pinctrl_select_state(gf_dev->pinctrl_gpios, gf_dev->pins_spi_mode);
+#else
 	gf_dev->pins_reset_high = pinctrl_lookup_state(gf_dev->pinctrl_gpios, "reset_high");
 	if (IS_ERR(gf_dev->pins_reset_high)) {
 		ret = PTR_ERR(gf_dev->pins_reset_high);
@@ -295,6 +309,7 @@ static int gf_get_gpio_dts_info(struct gf_device *gf_dev)
 		gf_debug(ERR_LOG, "%s can't find fingerprint pinctrl reset_low\n", __func__);
 		return ret;
 	}
+#endif
 
 	gf_debug(DEBUG_LOG, "%s, get pinctrl success!\n", __func__);
 #endif
@@ -420,6 +435,7 @@ static void gf_enable_irq(struct gf_device *gf_dev)
 		gf_debug(ERR_LOG, "%s, irq already enabled\n", __func__);
 	} else {
 		enable_irq(gf_dev->irq);
+		enable_irq_wake(gf_dev->irq);
 		gf_dev->irq_count = 1;
 		gf_debug(DEBUG_LOG, "%s enable interrupt!\n", __func__);
 	}
@@ -430,6 +446,7 @@ static void gf_disable_irq(struct gf_device *gf_dev)
 	if (0 == gf_dev->irq_count) {
 		gf_debug(ERR_LOG, "%s, irq already disabled\n", __func__);
 	} else {
+		disable_irq_wake(gf_dev->irq);
 		disable_irq(gf_dev->irq);
 		gf_dev->irq_count = 0;
 		gf_debug(DEBUG_LOG, "%s disable interrupt!\n", __func__);
@@ -868,6 +885,8 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			key_input = GF_KEY_INPUT_HOME;
 		} else if (GF_KEY_CAMERA == gf_key.key) {
 			key_input = GF_KEY_INPUT_CAMERA;
+		} else if (GF_KEY_HOME_DOUBLE_CLICK == gf_key.key) {
+			key_input = GF_KEY_INPUT_DOUBLE;
 		} else {
 			/* add special key define */
 			key_input = gf_key.key;
@@ -882,7 +901,7 @@ static long gf_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			input_sync(gf_dev->input);
 		}
 
-		if (GF_KEY_HOME == gf_key.key) {
+		if (GF_KEY_HOME == gf_key.key || GF_KEY_HOME_DOUBLE_CLICK == gf_key.key) {
 		    input_report_key(gf_dev->input, key_input, gf_key.value);
 		    input_sync(gf_dev->input);
 		}
@@ -1921,8 +1940,10 @@ static int gf_probe(struct spi_device *spi)
 	pr_err("%s %d now get dts info done!", __func__, __LINE__);
 	mdelay(10);
 	gf_hw_power_enable(gf_dev, 1);
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 	//set cs pin to cs mode
 	pinctrl_select_state(gf_dev->pinctrl_gpios, gf_dev->pins_spi_cs_high);
+#endif
 	gf_bypass_flash_gpio_cfg();
 	pr_err("%s %d now enable spi clk API", __func__, __LINE__);
 	gf_spi_clk_enable(gf_dev, 1);
@@ -1933,35 +1954,36 @@ static int gf_probe(struct spi_device *spi)
 	mdelay(1);
 	gf_spi_read_bytes(gf_dev, 0x0000, 4, rx_test);
 	printk("%s rx_test chip id:0x%x 0x%x 0x%x 0x%x \n", __func__, rx_test[0], rx_test[1], rx_test[2], rx_test[3]);
-	if (1) {
-	if (((rx_test[0] != 0x04) || (rx_test[3] != 0x25)) && ((rx_test[0] != 0x03) || (rx_test[3] != 0x25))) {
-			goodix_fp_exist = false;
-			gf_debug(ERR_LOG, "%s, get goodix FP sensor chipID fail!!\n", __func__);
-			//goto err_readid;
-
-			//workaround to solve two spi device
-			pr_err("%s cannot find the sensor,now exit\n", __func__);
-			if (gf_dev->pinctrl_gpios) {
-				devm_pinctrl_put(gf_dev->pinctrl_gpios);
-			}
-			spi_fingerprint = spi;
-			gf_hw_power_enable(gf_dev, 0);
-			gf_spi_clk_enable(gf_dev, 0);
-			kfree(gf_dev->spi_buffer);
-			mutex_destroy(&gf_dev->buf_lock);
-			mutex_destroy(&gf_dev->release_lock);
-			spi_set_drvdata(spi, NULL);
-			gf_dev->spi = NULL;
-			kfree(gf_dev);
-			gf_dev = NULL;
-			return 0;
-		} else {
-			goodix_fp_exist = true;
-			//set_fp_vendor(FP_VENDOR_GOODIX);
-			memcpy(&uuid_fp, &uuid_ta_gf, sizeof(struct TEEC_UUID));
-			pr_err("%s %d Goodix fingerprint sensor detected\n", __func__, __LINE__);
-			gf_debug(ERR_LOG, "[gf][goodix_test] %s, get chipid\n", __func__);
+	if (!((rx_test[3] == 0x25) &&
+		((rx_test[0] == 0x07) ||
+		(rx_test[0] == 0x08) ||
+		(rx_test[0] == 0x10) ||
+		(rx_test[0] == 0x04) ||
+		(rx_test[0] == 0x03)))) {
+		gf_debug(ERR_LOG, "%s, get goodix FP sensor chipID fail!!\n", __func__);
+		//goto err_readid;
+		//workaround to solve two spi device
+		pr_err("%s cannot find the sensor,now exit\n", __func__);
+		if (gf_dev->pinctrl_gpios) {
+			devm_pinctrl_put(gf_dev->pinctrl_gpios);
 		}
+		spi_fingerprint = spi;
+		gf_hw_power_enable(gf_dev, 0);
+		gf_spi_clk_enable(gf_dev, 0);
+		kfree(gf_dev->spi_buffer);
+		mutex_destroy(&gf_dev->buf_lock);
+		mutex_destroy(&gf_dev->release_lock);
+		spi_set_drvdata(spi, NULL);
+		gf_dev->spi = NULL;
+		kfree(gf_dev);
+		gf_dev = NULL;
+		return 0;
+	} else {
+		goodix_fp_exist = true;
+		//set_fp_vendor(FP_VENDOR_GOODIX);
+		memcpy(&uuid_fp, &uuid_ta_gf, sizeof(struct TEEC_UUID));
+		pr_err("%s %d Goodix fingerprint sensor detected\n", __func__, __LINE__);
+		gf_debug(ERR_LOG, "[gf][goodix_test] %s, get chipid\n", __func__);
 	}
 #ifdef SUPPORT_REE_SPI
 #ifdef SUPPORT_REE_OSWEGO
@@ -2056,6 +2078,7 @@ static int gf_probe(struct spi_device *spi)
 	__set_bit(EV_KEY, gf_dev->input->evbit);
 	__set_bit(GF_KEY_INPUT_HOME, gf_dev->input->keybit);
 
+	__set_bit(GF_KEY_INPUT_DOUBLE, gf_dev->input->keybit);
 	__set_bit(GF_KEY_INPUT_MENU, gf_dev->input->keybit);
 	__set_bit(GF_KEY_INPUT_BACK, gf_dev->input->keybit);
 	__set_bit(GF_KEY_INPUT_POWER, gf_dev->input->keybit);
@@ -2072,6 +2095,10 @@ static int gf_probe(struct spi_device *spi)
 	//__set_bit(GF_KEY_INPUT_KPENTER, gf_dev->input->keybit);
 
 	gf_dev->input->name = GF_INPUT_NAME;
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	gf_dev->input->id.vendor  = 0x0666;
+	gf_dev->input->id.product = 0x0888;
+#endif
 	if (input_register_device(gf_dev->input)) {
 		gf_debug(ERR_LOG, "%s, Failed to register input device.\n", __func__);
 		status = -ENODEV;

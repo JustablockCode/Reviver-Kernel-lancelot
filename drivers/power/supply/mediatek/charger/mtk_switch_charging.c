@@ -68,6 +68,7 @@ struct tag_bootmode {
 };
 
 extern int call_mode;
+extern enum hvdcp_status hvdcp_type_tmp;
 static int _uA_to_mA(int uA)
 {
 	if (uA == -1)
@@ -285,6 +286,13 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 				info->data.ac_charger_input_current;
 				pdata->charging_current_limit = 2000000;
 				break;
+		}
+		if (hvdcp_type_tmp == HVDCP) {
+			pdata->input_current_limit = 2000000;
+			pdata->charging_current_limit = 3000000;
+		} else if (hvdcp_type_tmp == HVDCP_3) {
+			pdata->input_current_limit = 3000000;
+			pdata->charging_current_limit = 3000000;
 		}
 	} else if (info->chr_type == CHARGING_HOST) {
 		pdata->input_current_limit =

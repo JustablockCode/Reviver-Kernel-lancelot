@@ -12,7 +12,11 @@ bat_gm30: battery{
 /*	If ui_soc shows 1% more than X minites, system will shutdown*/
 	KEEP_100_PERCENT = <(1)>;
 /*	The ui_soc will keep 100% until SOC drop X percents after unplugged*/
-	R_FG_VALUE = <(10)>;
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
+ 	R_FG_VALUE = <(10)>;
+#else
+	R_FG_VALUE = <(5)>;
+#endif
 /*	R_sense resistance*/
 	EMBEDDED_SEL = <(1)>;
 /*	Configures whether using embedded battery or not*/
@@ -26,7 +30,11 @@ bat_gm30: battery{
 /*	vboot voltage for gauge 0%*/
 	POWERON_SYSTEM_IBOOT = <(500)>;
 /*	power on system iboot*/
-	SHUTDOWN_GAUGE0_VOLTAGE = <(34000)>;
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
+ 	SHUTDOWN_GAUGE0_VOLTAGE = <(34000)>;
+#else
+	SHUTDOWN_GAUGE0_VOLTAGE = <(33500)>;
+#endif
 /*	shutdown gauge 0% voltage*/
 	TEMPERATURE_T0 = <(50)>;
 /*	Battery temperature T0*/
@@ -66,5 +74,9 @@ bat_gm30: battery{
 /* Table numbers per battery*/
 	MULTI_TEMP_GAUGE0 = <(1)>;
 /* Multi gauge0 enable*/
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 #include "mt6768_battery_table.dtsi"
+#else
+#include "mt6769_battery_table_ext.dtsi"
+#endif
 };

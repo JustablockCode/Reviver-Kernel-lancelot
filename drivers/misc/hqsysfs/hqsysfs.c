@@ -45,7 +45,10 @@ static HW_INFO(HWID_FP, fingerprint);
 //static HW_INFO(HWID_TEE,tee);
 static HW_INFO(HWID_PCBA, pcba_config);
 
-#if defined(TARGET_PRODUCT_LANCELOT) || defined(TARGET_PRODUCT_SHIVA)
+static HW_INFO(HWID_PMIC_VERSION, pmic_version);
+static HW_INFO(HWID_AUDIO, audio_PA);
+
+#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
 
 struct pcba_info pcba[] = {
 	{PCBA_J19_P0_1_CN, "PCBA_J19_P0-1_CN"},
@@ -69,6 +72,92 @@ struct pcba_info pcba[] = {
 	{PCBA_J19P_MP_INDIA, "PCBA_J19P_MP_INDIA"},
 	{PCBA_J19P_POCO_MP_INDIA, "PCBA_J19P_POCO_MP_INDIA"},
 
+};
+#elif defined(CONFIG_TARGET_PRODUCT_SELENE)
+struct pcba_info pcba[] = {
+	{PCBA_K19A_P0_GLOBAL, "PCBA_K19A_P0_GLOBAL"},
+	{PCBA_K19A_P0_LA, "PCBA_K19A_P0_LA"},
+	{PCBA_K19B_P0_IN, "PCBA_K19B_P0_IN"},
+	{PCBA_K19B_P0_CN, "PCBA_K19B_P0_CN"},
+	{PCBA_K19D_P0_GLOBAL, "PCBA_K19D_P0_GLOBAL"},
+	{PCBA_K19C_P0_GLOBAL, "PCBA_K19C_P0_GLOBAL"},
+	{PCBA_K19C_P0_IN, "PCBA_K19C_P0_IN"},
+	{PCBA_K19L_P0_LA, "PCBA_K19L_P0_LA"},
+	{PCBA_K19S_P0_CN, "PCBA_K19S_P0_CN"},
+	{PCBA_K19S_P0_GLOBAL, "PCBA_K19S_P0_GLOBAL"},
+	{PCBA_K19T_P0_IN, "PCBA_K19T_P0_IN"},
+	{PCBA_K19U_P0_GLOBAL, "PCBA_K19U_P0_GLOBAL"},
+	{PCBA_K19V_P0_LA, "PCBA_K19V_P0_LA"},
+
+	{PCBA_K19A_P0_1_GLOBAL, "PCBA_K19A_P0-1_GLOBAL"},
+	{PCBA_K19A_P0_1_LA, "PCBA_K19A_P0-1_LA"},
+	{PCBA_K19B_P0_1_IN, "PCBA_K19B_P0-1_IN"},
+	{PCBA_K19B_P0_1_CN, "PCBA_K19B_P0-1_CN"},
+	{PCBA_K19D_P0_1_GLOBAL, "PCBA_K19D_P0-1_GLOBAL"},
+	{PCBA_K19C_P0_1_GLOBAL, "PCBA_K19C_P0-1_GLOBAL"},
+	{PCBA_K19C_P0_1_IN, "PCBA_K19C_P0-1_IN"},
+	{PCBA_K19L_P0_1_LA, "PCBA_K19L_P0-1_LA"},
+	{PCBA_K19S_P0_1_CN, "PCBA_K19S_P0-1_CN"},
+	{PCBA_K19S_P0_1_GLOBAL, "PCBA_K19S_P0-1_GLOBAL"},
+	{PCBA_K19T_P0_1_IN, "PCBA_K19T_P0-1_IN"},
+	{PCBA_K19U_P0_1_GLOBAL, "PCBA_K19U_P0-1_GLOBAL"},
+	{PCBA_K19V_P0_1_LA, "PCBA_K19V_P0-1_LA"},
+
+	{PCBA_K19A_P1_GLOBAL, "PCBA_K19A_P1_GLOBAL"},
+	{PCBA_K19A_P1_LA, "PCBA_K19A_P1_LA"},
+	{PCBA_K19B_P1_IN, "PCBA_K19B_P1_IN"},
+	{PCBA_K19B_P1_CN, "PCBA_K19B_P1_CN"},
+	{PCBA_K19D_P1_GLOBAL, "PCBA_K19D_P1_GLOBAL"},
+	{PCBA_K19C_P1_GLOBAL, "PCBA_K19C_P1_GLOBAL"},
+	{PCBA_K19C_P1_IN, "PCBA_K19C_P1_IN"},
+	{PCBA_K19L_P1_LA, "PCBA_K19L_P1_LA"},
+	{PCBA_K19S_P1_CN, "PCBA_K19S_P1_CN"},
+	{PCBA_K19S_P1_GLOBAL, "PCBA_K19S_P1_GLOBAL"},
+	{PCBA_K19T_P1_IN, "PCBA_K19T_P1_IN"},
+	{PCBA_K19U_P1_GLOBAL, "PCBA_K19U_P1_GLOBAL"},
+	{PCBA_K19V_P1_LA, "PCBA_K19V_P1_LA"},
+
+	{PCBA_K19A_P1_1_GLOBAL, "PCBA_K19A_P1-1_GLOBAL"},
+	{PCBA_K19A_P1_1_LA, "PCBA_K19A_P1-1_LA"},
+	{PCBA_K19B_P1_1_IN, "PCBA_K19B_P1-1_IN"},
+	{PCBA_K19B_P1_1_CN, "PCBA_K19B_P1-1_CN"},
+	{PCBA_K19D_P1_1_GLOBAL, "PCBA_K19D_P1-1_GLOBAL"},
+	{PCBA_K19C_P1_1_GLOBAL, "PCBA_K19C_P1-1_GLOBAL"},
+	{PCBA_K19C_P1_1_IN, "PCBA_K19C_P1-1_IN"},
+	{PCBA_K19L_P1_1_LA, "PCBA_K19L_P1-1_LA"},
+	{PCBA_K19S_P1_1_CN, "PCBA_K19S_P1-1_CN"},
+	{PCBA_K19S_P1_1_GLOBAL, "PCBA_K19S_P1-1_GLOBAL"},
+	{PCBA_K19T_P1_1_IN, "PCBA_K19T_P1-1_IN"},
+	{PCBA_K19U_P1_1_GLOBAL, "PCBA_K19U_P1-1_GLOBAL"},
+	{PCBA_K19V_P1_1_LA, "PCBA_K19V_P1-1_LA"},
+
+	{PCBA_K19A_P2_GLOBAL, "PCBA_K19A_P2_GLOBAL"},
+	{PCBA_K19A_P2_LA, "PCBA_K19A_P2_LA"},
+	{PCBA_K19B_P2_IN, "PCBA_K19B_P2_IN"},
+	{PCBA_K19B_P2_CN, "PCBA_K19B_P2_CN"},
+	{PCBA_K19D_P2_GLOBAL, "PCBA_K19D_P2_GLOBAL"},
+	{PCBA_K19C_P2_GLOBAL, "PCBA_K19C_P2_GLOBAL"},
+	{PCBA_K19C_P2_IN, "PCBA_K19C_P2_IN"},
+	{PCBA_K19L_P2_LA, "PCBA_K19L_P2_LA"},
+	{PCBA_K19S_P2_CN, "PCBA_K19S_P2_CN"},
+	{PCBA_K19S_P2_GLOBAL, "PCBA_K19S_P2_GLOBAL"},
+	{PCBA_K19T_P2_IN, "PCBA_K19T_P2_IN"},
+	{PCBA_K19U_P2_GLOBAL, "PCBA_K19U_P2_GLOBAL"},
+	{PCBA_K19V_P2_LA, "PCBA_K19V_P2_LA"},
+
+	{PCBA_K19A_MP_GLOBAL, "PCBA_K19A_MP_GLOBAL"},
+	{PCBA_K19A_MP_LA, "PCBA_K19A_MP_LA"},
+	{PCBA_K19B_MP_IN, "PCBA_K19B_MP_IN"},
+	{PCBA_K19B_MP_CN, "PCBA_K19B_MP_CN"},
+	{PCBA_K19D_MP_GLOBAL, "PCBA_K19D_MP_GLOBAL"},
+	{PCBA_K19C_MP_GLOBAL, "PCBA_K19C_MP_GLOBAL"},
+	{PCBA_K19C_MP_IN, "PCBA_K19C_MP_IN"},
+	{PCBA_K19L_MP_LA, "PCBA_K19L_MP_LA"},
+	{PCBA_K19S_MP_CN, "PCBA_K19S_MP_CN"},
+	{PCBA_K19S_MP_GLOBAL, "PCBA_K19S_MP_GLOBAL"},
+	{PCBA_K19T_MP_IN, "PCBA_K19T_MP_IN"},
+	{PCBA_K19U_MP_GLOBAL, "PCBA_K19U_MP_GLOBAL"},
+	{PCBA_K19V_MP_LA, "PCBA_K19V_MP_LA"},
 };
 #else
 struct pcba_info pcba[] = {
@@ -122,7 +211,9 @@ static struct attribute *huaqin_attrs[] = {
 	&hw_info_nfc.attr,
 	&hw_info_fingerprint.attr,
 	&hw_info_pcba_config.attr,
+	&hw_info_pmic_version.attr,
 //	&hw_info_tee.attr,
+	&hw_info_audio_PA.attr,
 	NULL
 };
 
@@ -170,6 +261,8 @@ static ssize_t huaqin_show(struct kobject *kobj, struct attribute *a, char *buf)
 		}
 
 		count = sprintf(buf, "%s\n", "PCBA_UNKONW");
+		} else if (HWID_PMIC_VERSION == hw->hw_id) {
+			count = sprintf(buf, "%s\n", "PMIC: MT6358 V1.0");
 		} else{
 
 		if (0 == hw->hw_exist) {
@@ -313,6 +406,7 @@ err:
 
 }
 
+static char *audio_pa = "";
 
 int hq_regiser_hw_info(enum hardware_id id, char *device_name)
 {
@@ -359,6 +453,9 @@ int hq_regiser_hw_info(enum hardware_id id, char *device_name)
 						hw->hw_device_name = "Can't find Camera Vendor";
 					break;
 				*/
+			case HWID_AUDIO:
+					audio_pa = device_name;
+					break;
 			default:
 					hw->hw_device_name = device_name;
 					break;
@@ -468,6 +565,12 @@ static int __init hq_harware_init(void)
 
 	return 0;
 }
+
+char *get_audio_pa_vendor(void)
+{
+	return audio_pa;
+}
+EXPORT_SYMBOL(get_audio_pa_vendor);
 
 core_initcall(hq_harware_init);
 MODULE_AUTHOR("KaKa Ni <nigang@huaqin.com>");

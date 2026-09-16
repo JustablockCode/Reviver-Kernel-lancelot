@@ -32,7 +32,8 @@
 		bootargs = "console=tty0 console=ttyS0,921600n1 root=/dev/ram \
 vmalloc=496M swiotlb=noforce \
 cgroup.memory=nosocket,nokmem \
-firmware_class.path=/vendor/firmware";
+firmware_class.path=/vendor/firmware \
+page_owner=on loop.max_part=7";
 		kaslr-seed = <0 0>;
 	};
 
@@ -1546,6 +1547,9 @@ firmware_class.path=/vendor/firmware";
 		seninf_6_fifo_full = <333>;
 		seninf_7_fifo_full = <334>;
 		dsi0_te_from_infra = <898>;
+		max_prefetch_cnt = <1>;
+		prefetch_size = <96>;
+		sram_size_cpr_64 = <64>;
 		mmsys_config = <&mmsys_config>;
 		mdp_rdma0 = <&mdp_rdma0>;
 		mdp_rsz0 = <&mdp_rsz0>;
@@ -1685,7 +1689,11 @@ defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
 
 	swtp: swtp {
 		compatible = "mediatek, swtp-eint";
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 		ant_sw_gpios = <&pio 72 0>;
+#else
+		swtp-gpio = <&pio 56 0>;
+#endif
 	};
 
 	mt6358_gauge {
@@ -1700,7 +1708,11 @@ defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
 	};
 	simtray {
 		compatible = "xiaomi,simtray-status";
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 		status-gpio = <&pio 46 0>;
+#else
+		status-gpio = <&pio 47 0>;
+#endif
 	};
 #if (CONFIG_MTK_GAUGE_VERSION == 30)
 	#include "mediatek/bat_setting/mt6768_battery_prop.dtsi"
@@ -2327,7 +2339,7 @@ defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
 
 	spi0:spi0@1100a000 {
 		compatible = "mediatek,mt6765-spi";
-		mediatek,pad-select = <0>;
+		mediatek,pad-select = <0>,<1>;
 		reg = <0 0x1100a000 0 0x1000>;
 		interrupts = <GIC_SPI 138 IRQ_TYPE_LEVEL_LOW>;
 		clocks = <&topckgen CLK_TOP_SYSPLL3_D2>,
@@ -3137,6 +3149,46 @@ defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
 			"TOP_UNIVPLL2_D4",
 			"TOP_ULPOSC1_D2",
 			"TOP_ULPOSC1_D8";
+
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+		mboxes = <&gce_mbox_bdg 0 0 CMDQ_THR_PRIO_4>,
+			<&gce_mbox_bdg 1 0 CMDQ_THR_PRIO_4>,
+			<&gce_mbox_bdg 2 0 CMDQ_THR_PRIO_4>,
+			<&gce_mbox_bdg 3 CMDQ_NO_TIMEOUT CMDQ_THR_PRIO_2>,
+			<&gce_mbox_bdg 5 CMDQ_NO_TIMEOUT CMDQ_THR_PRIO_2>;
+
+		gce-client-names = "BDG_CLIENT_CFG0",
+			"BDG_CLIENT_CFG1",
+			"BDG_CLIENT_CFG2",
+			"BDG_CLIENT_TRIG_LOOP0",
+			"BDG_CLIENT_TRIG_LOOP1";
+
+		/* define subsys, see mt6885-gce.h */
+		gce-subsys = <&gce_mbox 0x14000000 SUBSYS_1400XXXX>,
+			<&gce_mbox 0x14010000 SUBSYS_1401XXXX>,
+			<&gce_mbox 0x14020000 SUBSYS_1402XXXX>;
+
+		/* define events, see mt6885-gce.h */
+		gce-event-names = "bdg_rdma0_sof",
+			"bdg_dsi0_sof",
+			"bdg_rdma0_sof",
+			"bdg_rdma0_eof",
+			"bdg_dsi0_eof",
+			"bdg_dsi0_te",
+			"bdg_dsi0_irq",
+			"bdg_dsi0_done",
+			"bdg_dsi0_target_line";
+
+		gce-events = <&gce_mbox_bdg CMDQ_BRIDGE_EVENT_DISP_RDMA0_SOF>,
+			<&gce_mbox_bdg CMDQ_BRIDGE_EVENT_DISP_DSI0_SOF>,
+			<&gce_mbox_bdg CMDQ_BRIDGE_EVENT_DISP_RDMA0_SOF>,
+			<&gce_mbox_bdg CMDQ_BRIDGE_EVENT_DISP_RDMA0_FRAME_DONE>,
+			<&gce_mbox_bdg CMDQ_BRIDGE_EVENT_DSI_FRAME_DONE>,
+			<&gce_mbox_bdg CMDQ_BRIDGE_EVENT_DSI0_TE_ENG_EVENT>,
+			<&gce_mbox_bdg CMDQ_BRIDGE_EVENT_DSI0_IRQ_ENG_EVENT>,
+			<&gce_mbox_bdg CMDQ_BRIDGE_EVENT_DSI0_DONE_ENG_EVENT>,
+			<&gce_mbox_bdg CMDQ_BRIDGE_EVENT_DSI0_TARGET_LINE_EVENT>;
+#endif
 	};
 
 	dsi_te: dsi_te {
@@ -3775,6 +3827,21 @@ defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
 		compatible = "mediatek,mt-charger";
 		bootmode = <&chosen>;
 	};
+
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	onewire_gpio: onewire_gpio {
+		compatible = "xiaomi,onewire_gpio";
+	};
+
+	maxim_ds28e16: maxim_ds28e16 {
+		compatible = "maxim,ds28e16";
+	};
+
+	dsi_err_flag: dsi_err_flag {
+		compatible = "mediatek, dsi_err-flag";
+		status = "disabled";
+	};
+#endif
 
 	msdc1_ins: msdc1_ins {
 	};

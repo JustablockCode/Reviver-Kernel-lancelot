@@ -90,7 +90,7 @@ void nvt_lockdown_proc_deinit(void);
 #define NVT_IRQ_SWITCH 1
 //---Touch info.---
 #define TOUCH_DEFAULT_MAX_WIDTH 1080
-#ifdef CONFIG_TARGET_PRODUCT_SELENECOMMON
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
 #define TOUCH_DEFAULT_MAX_HEIGHT 2400
 #else
 #define TOUCH_DEFAULT_MAX_HEIGHT 2340
@@ -107,7 +107,7 @@ extern const uint16_t touch_key_array[TOUCH_KEY_NUM];
 
 /* Enable only when module have tp reset pin and connected to host */
 /* Huaqin modify for TP not need tp reset by zhangjiangbin at 2021/07/13 start */
-#ifdef CONFIG_TARGET_PRODUCT_MERLINCOMMON
+#ifdef CONFIG_TARGET_PRODUCT_MERLIN
 #define NVT_TOUCH_SUPPORT_HW_RST 1
 #else
 #define NVT_TOUCH_SUPPORT_HW_RST 0
@@ -147,7 +147,7 @@ extern char *MP_UPDATE_FIRMWARE_NAME;
 #define NVT_TOUCH_ESD_CHECK_PERIOD 1500	/* ms */
 #define NVT_TOUCH_WDT_RECOVERY 1
 #define NVT_TOUCH_ESD_DISP_RECOVERY 0
-#ifdef CONFIG_TARGET_PRODUCT_SELENECOMMON
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
 #define NVT_TOUCH_VDD_TP_RECOVERY 1
 #else
 #define NVT_TOUCH_VDD_TP_RECOVERY 0

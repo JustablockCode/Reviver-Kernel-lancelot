@@ -55,4 +55,6 @@ config OCP96011_I2C
 	  multimedia switch. The OCP96011 supports USB2.0
 	  signal, analog audio, sideband use wires and analog
 	  microphone signal.
+
 source "drivers/misc/mediatek/typec/tcpc/Kconfig"
+source "drivers/misc/mediatek/typec/fusb302b/Kconfig"

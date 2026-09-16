@@ -275,6 +275,7 @@ static struct gpio_desc *lm363x_regulator_of_get_enable_gpio(struct device *dev,
 	case LM3627X_LDO_POS:
 	case LM3632_LDO_POS:
 		return of_get_named_gpio(np, "ti,lcm-en1-gpios", 0);
+	case LM3627X_LDO_NEG:
 	case LM3632_LDO_NEG:
 		return of_get_named_gpio(np, "ti,lcm-en2-gpios", 0);
 	default:

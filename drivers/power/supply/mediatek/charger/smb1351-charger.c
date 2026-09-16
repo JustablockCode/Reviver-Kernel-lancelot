@@ -2804,6 +2804,8 @@ static int smb1351_enable_chg_type_det(struct charger_device *chg_dev, bool en)
 	u8 reg, mask = 0;
 	const int max_wait_cnt = 200;
 
+	en = false;
+
 	pr_info("%s: en = %d\n", __func__, en);
 	/*set smb_susp pin high*/
     if (gpio_is_valid(chip->suspend_gpio))

@@ -30,7 +30,7 @@
 #ifdef CONFIG_SWTP_DRIVER
 static int lastkey;
 static struct input_dev *sar_input_dev;
-static unsigned int ant_gpio_number;
+static int ant_gpio_number = -1;
 static struct class *swtp_class;
 static dev_t swtp_devno;
 struct device *swtp_dev;
@@ -168,25 +168,29 @@ static void sar_work(struct work_struct *work)
 
 	if (swtp_enalbe == 1) {
 		if (swtp->gpio_state[0] == SWTP_EINT_PIN_PLUG_OUT) {
-			if (gpio_get_value(ant_gpio_number) == 0) {
+			if (gpio_is_valid(ant_gpio_number) && gpio_get_value(ant_gpio_number) == 0) {
 				printk("[SWTP] KEY_TABLE1\n");
 				if (lastkey != 1) {
 					// tab1
 					lastkey = 1;
-					input_report_key(sar_input_dev, KEY_TABLE1, 1);
-					input_sync(sar_input_dev);
-					input_report_key(sar_input_dev, KEY_TABLE1, 0);
-					input_sync(sar_input_dev);
+					if (sar_input_dev) {
+						input_report_key(sar_input_dev, KEY_TABLE1, 1);
+						input_sync(sar_input_dev);
+						input_report_key(sar_input_dev, KEY_TABLE1, 0);
+						input_sync(sar_input_dev);
+					}
 				}
 			} else {
 				//tab 2
 				printk("[SWTP] KEY_TABLE2\n");
 				if (lastkey != 2) {
 					lastkey = 2;
-					input_report_key(sar_input_dev, KEY_TABLE2, 1);
-					input_sync(sar_input_dev);
-					input_report_key(sar_input_dev, KEY_TABLE2, 0);
-					input_sync(sar_input_dev);
+					if (sar_input_dev) {
+						input_report_key(sar_input_dev, KEY_TABLE2, 1);
+						input_sync(sar_input_dev);
+						input_report_key(sar_input_dev, KEY_TABLE2, 0);
+						input_sync(sar_input_dev);
+					}
 				}
 			}
 		} else {
@@ -194,10 +198,12 @@ static void sar_work(struct work_struct *work)
 			printk("[SWTP] KEY_NONE\n");
 			if (lastkey != 3) {
 				lastkey = 3;
-				input_report_key(sar_input_dev, KEY_NONE, 1);
-				input_sync(sar_input_dev);
-				input_report_key(sar_input_dev, KEY_NONE, 0);
-				input_sync(sar_input_dev);
+				if (sar_input_dev) {
+					input_report_key(sar_input_dev, KEY_NONE, 1);
+					input_sync(sar_input_dev);
+					input_report_key(sar_input_dev, KEY_NONE, 0);
+					input_sync(sar_input_dev);
+				}
 			}
 		}
 	}
@@ -324,8 +330,8 @@ static void swtp_init_delayed_work(struct work_struct *work)
 		ret = -3;
 		CCCI_LEGACY_ERR_LOG(-1, SYS,
 			"%s: invalid array count = %lu(of_match), %lu(irq_name)\n",
-			__func__, ARRAY_SIZE(swtp_of_match),
-			ARRAY_SIZE(irq_name));
+			__func__, (unsigned long)ARRAY_SIZE(swtp_of_match),
+			(unsigned long)ARRAY_SIZE(irq_name));
 		goto SWTP_INIT_END;
 	}
 
@@ -345,16 +351,21 @@ static void swtp_init_delayed_work(struct work_struct *work)
 
 				//request input device
 				sar_input_dev = input_allocate_device();
-				sar_input_dev->name = "mysar";
-				__set_bit(EV_KEY, sar_input_dev->evbit);
+				if (sar_input_dev) {
+					sar_input_dev->name = "mysar";
+					__set_bit(EV_KEY, sar_input_dev->evbit);
 
-				input_set_capability(sar_input_dev, EV_KEY, KEY_TABLE1);
-				input_set_capability(sar_input_dev, EV_KEY, KEY_TABLE2);
-				input_set_capability(sar_input_dev, EV_KEY, KEY_NONE);
+					input_set_capability(sar_input_dev, EV_KEY, KEY_TABLE1);
+					input_set_capability(sar_input_dev, EV_KEY, KEY_TABLE2);
+					input_set_capability(sar_input_dev, EV_KEY, KEY_NONE);
 
-				ret = input_register_device(sar_input_dev);
-				if (ret)
-					printk("[SWTP]input device register fail\n");
+					ret = input_register_device(sar_input_dev);
+					if (ret) {
+						printk("[SWTP]input device register fail\n");
+						input_free_device(sar_input_dev);
+						sar_input_dev = NULL;
+					}
+				}
 			}
 			// new add for swtp by zch end
 #endif
@@ -364,7 +375,6 @@ static void swtp_init_delayed_work(struct work_struct *work)
 				CCCI_LEGACY_ERR_LOG(md_id, SYS,
 					"%s:swtp%d get debounce fail\n",
 					__func__, i);
-				break;
 			}
 
 			ret = of_property_read_u32_array(node, "interrupts",
@@ -373,7 +383,6 @@ static void swtp_init_delayed_work(struct work_struct *work)
 				CCCI_LEGACY_ERR_LOG(md_id, SYS,
 					"%s:swtp%d get interrupts fail\n",
 					__func__, i);
-				break;
 			}
 #ifdef CONFIG_MTK_EIC /* for chips before mt6739 */
 			swtp_data[md_id].gpiopin[i] = ints[0];
@@ -382,9 +391,16 @@ static void swtp_init_delayed_work(struct work_struct *work)
 			swtp_data[md_id].setdebounce[i] = ints[0];
 			swtp_data[md_id].gpiopin[i] =
 				of_get_named_gpio(node, "deb-gpios", 0);
+			if (swtp_data[md_id].gpiopin[i] < 0)
+				swtp_data[md_id].gpiopin[i] = of_get_named_gpio(node, "swtp-gpio", 0);
+			if (swtp_data[md_id].gpiopin[i] < 0)
+				swtp_data[md_id].gpiopin[i] = of_get_named_gpio(node, "ant_sw_gpios", 0);
 #endif
-			gpio_set_debounce(swtp_data[md_id].gpiopin[i],
-				swtp_data[md_id].setdebounce[i]);
+			if (gpio_is_valid(swtp_data[md_id].gpiopin[i])) {
+				if (swtp_data[md_id].setdebounce[i] > 0)
+					gpio_set_debounce(swtp_data[md_id].gpiopin[i],
+						swtp_data[md_id].setdebounce[i]);
+			}
 			swtp_data[md_id].eint_type[i] = ints1[1];
 			swtp_data[md_id].irq[i] = irq_of_parse_and_map(node, 0);
 

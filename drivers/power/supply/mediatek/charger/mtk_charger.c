@@ -72,6 +72,14 @@
 bool thermal_is_500;
 static struct charger_manager *pinfo;
 static struct list_head consumer_head = LIST_HEAD_INIT(consumer_head);
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+extern int hq_selene_pcba_config;
+#endif
+
+#if defined(CONFIG_TOUCHSCREEN_NT36xxx_SPI)
+extern bool tp_charger_status;
+#endif
+
 static DEFINE_MUTEX(consumer_mutex);
 
 struct tag_bootmode {
@@ -81,7 +89,7 @@ struct tag_bootmode {
 	u32 boottype;
 };
 
-#if defined(TARGET_PRODUCT_LANCELOT) || defined(TARGET_PRODUCT_SHIVA)
+#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
 typedef enum {
 	PCBA_UNKNOW = 0,
 	PCBA_J19_P0_1_CN = 0x10,
@@ -107,7 +115,97 @@ typedef enum {
 	PCBA_J19P_END,
 	PCBA_END,
 } PCBA_CONFIG;
+#elif defined(CONFIG_TARGET_PRODUCT_SELENE)
+typedef enum
+{
+	PCBA_UNKNOW = 0,
 
+	PCBA_K19A_P0_GLOBAL = 1,
+	PCBA_K19A_P0_LA,
+	PCBA_K19B_P0_IN,
+	PCBA_K19B_P0_CN,
+	PCBA_K19D_P0_GLOBAL,
+	PCBA_K19C_P0_GLOBAL,
+	PCBA_K19C_P0_IN,
+	PCBA_K19L_P0_LA,
+	PCBA_K19S_P0_CN,
+	PCBA_K19S_P0_GLOBAL,
+	PCBA_K19T_P0_IN,
+	PCBA_K19U_P0_GLOBAL,
+	PCBA_K19V_P0_LA,
+
+	PCBA_K19A_P0_1_GLOBAL = 14,
+	PCBA_K19A_P0_1_LA,
+	PCBA_K19B_P0_1_IN,
+	PCBA_K19B_P0_1_CN,
+	PCBA_K19D_P0_1_GLOBAL,
+	PCBA_K19C_P0_1_GLOBAL,
+	PCBA_K19C_P0_1_IN,
+	PCBA_K19L_P0_1_LA,
+	PCBA_K19S_P0_1_CN,
+	PCBA_K19S_P0_1_GLOBAL,
+	PCBA_K19T_P0_1_IN,
+	PCBA_K19U_P0_1_GLOBAL,
+	PCBA_K19V_P0_1_LA,
+
+	PCBA_K19A_P1_GLOBAL = 27,
+	PCBA_K19A_P1_LA,
+	PCBA_K19B_P1_IN,
+	PCBA_K19B_P1_CN,
+	PCBA_K19D_P1_GLOBAL,
+	PCBA_K19C_P1_GLOBAL,
+	PCBA_K19C_P1_IN,
+	PCBA_K19L_P1_LA,
+	PCBA_K19S_P1_CN,
+	PCBA_K19S_P1_GLOBAL,
+	PCBA_K19T_P1_IN,
+	PCBA_K19U_P1_GLOBAL,
+	PCBA_K19V_P1_LA,
+
+	PCBA_K19A_P1_1_GLOBAL = 40,
+	PCBA_K19A_P1_1_LA,
+	PCBA_K19B_P1_1_IN,
+	PCBA_K19B_P1_1_CN,
+	PCBA_K19D_P1_1_GLOBAL,
+	PCBA_K19C_P1_1_GLOBAL,
+	PCBA_K19C_P1_1_IN,
+	PCBA_K19L_P1_1_LA,
+	PCBA_K19S_P1_1_CN,
+	PCBA_K19S_P1_1_GLOBAL,
+	PCBA_K19T_P1_1_IN,
+	PCBA_K19U_P1_1_GLOBAL,
+	PCBA_K19V_P1_1_LA,
+
+	PCBA_K19A_P2_GLOBAL = 53,
+	PCBA_K19A_P2_LA,
+	PCBA_K19B_P2_IN,
+	PCBA_K19B_P2_CN,
+	PCBA_K19D_P2_GLOBAL,
+	PCBA_K19C_P2_GLOBAL,
+	PCBA_K19C_P2_IN,
+	PCBA_K19L_P2_LA,
+	PCBA_K19S_P2_CN,
+	PCBA_K19S_P2_GLOBAL,
+	PCBA_K19T_P2_IN,
+	PCBA_K19U_P2_GLOBAL,
+	PCBA_K19V_P2_LA,
+
+	PCBA_K19A_MP_GLOBAL = 66,
+	PCBA_K19A_MP_LA,
+	PCBA_K19B_MP_IN,
+	PCBA_K19B_MP_CN,
+	PCBA_K19D_MP_GLOBAL,
+	PCBA_K19C_MP_GLOBAL,
+	PCBA_K19C_MP_IN,
+	PCBA_K19L_MP_LA,
+	PCBA_K19S_MP_CN,
+	PCBA_K19S_MP_GLOBAL,
+	PCBA_K19T_MP_IN,
+	PCBA_K19U_MP_GLOBAL,
+	PCBA_K19V_MP_LA,
+
+	PCBA_END,
+} PCBA_CONFIG;
 #else
 typedef enum {
 	PCBA_UNKNOW = 0,
@@ -138,23 +236,23 @@ typedef enum {
 PCBA_CONFIG get_huaqin_pcba_config(void);
 PCBA_CONFIG pcba_to_thermal = PCBA_UNKNOW;
 
-static int thermal_mitigation_dcp[THERMAL_MAX] = {2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 1500000, 1500000, 1500000, 1000000,
-												  1000000, 1000000, 2000000, 1000000, 2000000, 1000000, 1500000, 1000000, 1000000, 1000000, 1000000, 1000000, 1000000};
+static int thermal_mitigation_dcp[THERMAL_MAX] = {2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000,
+												  2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 1600000, 1600000, 1600000, 1200000};
 
-static int thermal_mitigation_qc2[THERMAL_MAX] = {2000000, 1700000, 1700000, 1500000, 1500000, 1500000, 1400000, 1400000, 1400000, 1300000, 1300000, 1300000,
-												  1100000, 1100000, 1100000,  685000,  685000,  685000,  600000,  600000,  500000,  500000,  500000,  500000,  500000};
+static int thermal_mitigation_qc2[THERMAL_MAX] = {2000000, 1500000, 1400000, 1300000, 1300000, 1200000, 1100000, 1000000, 900000, 900000, 900000, 900000,
+												  900000, 1200000, 1100000, 1000000, 900000, 800000, 800000, 700000, 600000, 500000, 500000, 500000, 500000};
 
-static int thermal_mitigation_qc3[THERMAL_MAX] = {3000000, 3000000, 2500000, 2500000, 2500000, 2000000, 2000000, 1500000, 2000000, 1500000, 1000000, 1000000,
-												  1000000, 1000000, 1500000, 1000000, 1500000, 685000, 1500000,  685000,  685000,  685000,  685000, 685000,  685000};
+static int thermal_mitigation_qc3[THERMAL_MAX] = {3000000, 2200000, 2100000, 2000000, 1900000, 1800000, 1600000, 1500000, 1400000, 1400000, 1400000, 1400000,
+												  900000, 1800000, 1700000, 1500000, 1500000, 1200000, 1200000,  1100000,  900000,  900000, 900000, 900000, 900000};
 
-static int thermal_mitigation_dcp_cn[THERMAL_MAX] = {2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 1500000, 1500000,
-												1200000, 1200000, 2000000, 1000000, 2000000, 1000000, 1000000, 1000000, 1000000, 1000000, 1000000, 1000000, 1000000};
+static int thermal_mitigation_dcp_cn[THERMAL_MAX] = {2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000,
+												2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 2000000, 1600000, 1600000, 1600000, 1200000};
 
-static int thermal_mitigation_qc2_cn[THERMAL_MAX] = {2000000, 1700000, 1700000, 1500000, 1500000, 1500000, 1400000, 1400000, 1400000, 1300000, 1300000, 1300000,
-												1100000, 1100000, 1100000,  685000,  685000,  685000,  600000,  600000,  500000,  500000,  500000,  500000,  500000};
+static int thermal_mitigation_qc2_cn[THERMAL_MAX] = {2000000, 1400000, 1400000, 1300000, 1200000, 1200000, 1100000, 1000000, 900000, 900000, 900000, 900000,
+												500000, 1200000, 1100000, 1000000, 900000, 800000, 800000, 700000, 600000, 500000, 500000, 500000, 500000};
 
-static int thermal_mitigation_qc3_cn[THERMAL_MAX] = {3000000, 3000000, 2500000, 2500000, 2500000, 2000000, 2000000, 1500000, 2000000, 2000000, 1500000, 1500000,
-												1200000, 1100000, 1500000, 1000000, 1500000, 685000, 1000000,  685000,  685000,  685000,  685000, 685000,  685000};
+static int thermal_mitigation_qc3_cn[THERMAL_MAX] = {3000000, 2600000, 2500000, 2400000, 2200000, 2000000, 1800000, 1800000, 1800000, 1800000, 1800000, 1400000,
+												1000000, 2200000, 1800000, 1400000, 1200000, 1000000, 800000, 800000, 800000, 800000, 600000, 400000, 300000};
 
 bool is_power_path_supported(void)
 {
@@ -897,6 +995,25 @@ int charger_manager_set_input_suspend(int suspend)
 	return 0;
 }
 
+int charger_manager_set_hiz_enable(int hiz_enable)
+{
+	pr_info("%s : %d.\n", __func__, hiz_enable);
+
+	if (pinfo == NULL)
+		return false;
+
+	if (hiz_enable) {
+		charger_dev_enable_hz(pinfo->chg1_dev, true);
+		pinfo->is_input_suspend = true;
+	} else {
+		charger_dev_enable_hz(pinfo->chg1_dev, false);
+		pinfo->is_input_suspend = false;
+	}
+	// if (pinfo->usb_psy)
+	// 	power_supply_changed(pinfo->usb_psy);
+	return 0;
+}
+
 int charger_manager_is_input_suspend(void)
 {
 	if (pinfo == NULL)
@@ -928,8 +1045,11 @@ void charger_manager_set_prop_system_temp_level(int temp_level)
 	if (pinfo == NULL)
 		return ;
 	pcba_to_thermal = get_huaqin_pcba_config();
-#if defined(TARGET_PRODUCT_LANCELOT) || defined(TARGET_PRODUCT_SHIVA)
+#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
 	if (pcba_to_thermal == PCBA_J19_MP_CN)
+		is_cn = true;
+#elif defined(CONFIG_TARGET_PRODUCT_SELENE)
+	if (pcba_to_thermal == PCBA_K19B_MP_CN || pcba_to_thermal == PCBA_K19S_MP_CN)
 		is_cn = true;
 #else
 	if (pcba_to_thermal == PCBA_J15S_MP_CN)
@@ -1244,6 +1364,64 @@ int charger_get_vbus(void)
 	return vchr;
 }
 
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+int hq_config(void)
+{
+	int config;
+
+	if(hq_selene_pcba_config >= 0 && hq_selene_pcba_config <= 2)
+		config = K19A;
+	else if(hq_selene_pcba_config == 3 || hq_selene_pcba_config == 4)
+		config = K19B;
+	else if(hq_selene_pcba_config == 11)
+	/* K19SFAC-41 code for K19T by wanglicheng at 20210929 start */
+		config = K19T;
+	/* K19SFAC-41 code for K19T by wanglicheng at 20210929 end */
+	else if(hq_selene_pcba_config == 9 || hq_selene_pcba_config == 10)
+		config = K19S;
+	else if(hq_selene_pcba_config == 12)
+		config = K19U;
+	else if(hq_selene_pcba_config == 13)
+		config = K19V;
+	else
+		config = K19D;
+	printk("%s: config = %d",__func__,config);
+	return config;
+}
+
+void hq_jeita_config(struct charger_manager *info)
+{
+	struct sw_jeita_data *sw_jeita;
+	sw_jeita = &info->sw_jeita;
+
+	if(hq_config() == K19B){
+		switch(sw_jeita->sm){
+			case TEMP_BELOW_T0:
+				info->data.jeita_temp_below_t0_cc = JEITA_TEMP_BELOW_T0_CC_CN;
+				break;
+			case TEMP_T0_TO_T1:
+				info->data.jeita_temp_t0_to_t1_cc = JEITA_TEMP_T0_TO_T1_CC_CN;
+				break;
+			case TEMP_T1_TO_T2:
+				info->data.jeita_temp_t1_to_t2_cc = JEITA_TEMP_T1_TO_T2_CC_CN;
+				break;
+			case TEMP_T2_TO_T3:
+				info->data.jeita_temp_t2_to_t3_cc = JEITA_TEMP_T2_TO_T3_CC_CN;
+				break;
+			case TEMP_T3_TO_T4:
+				info->data.jeita_temp_t3_to_t4_cc = JEITA_TEMP_T3_TO_T4_CC_CN;
+				break;
+			default:
+				break;
+		}
+		printk("%s: temp_level = %d",__func__,sw_jeita->sm);
+	}
+	else
+		return;
+
+}
+#endif
+
 /* internal algorithm common function end */
 
 /* sw jeita */
@@ -1262,7 +1440,7 @@ void do_sw_jeita_state_machine(struct charger_manager *info)
 
 		sw_jeita->sm = TEMP_ABOVE_T4;
 		sw_jeita->charging = false;
-	} else if (info->battery_temp > info->data.temp_t3_thres) {
+	} else if (info->battery_temp >= info->data.temp_t3_thres) {
 		/* control 45 degree to normal behavior */
 		if ((sw_jeita->sm == TEMP_ABOVE_T4)
 		    && (info->battery_temp
@@ -1272,6 +1450,10 @@ void do_sw_jeita_state_machine(struct charger_manager *info)
 				info->data.temp_t4_thres);
 
 			sw_jeita->charging = false;
+		} else if (info->battery_temp >= 58) {
+			sw_jeita->charging = false;
+			sw_jeita->sm = TEMP_ABOVE_T4;
+			chr_err("[SW_JEITA]wlc now temprature is %d, te_thres_minus: %d !!\n",info->battery_temp, info->data.temp_t4_thres_minus_x_degree);
 		} else {
 			chr_err("[SW_JEITA] Battery Temperature between %d and %d !!\n",
 				info->data.temp_t3_thres,
@@ -1280,64 +1462,37 @@ void do_sw_jeita_state_machine(struct charger_manager *info)
 			sw_jeita->sm = TEMP_T3_TO_T4;
 		}
 	} else if (info->battery_temp >= info->data.temp_t2_thres) {
-		if (((sw_jeita->sm == TEMP_T3_TO_T4)
-		     && (info->battery_temp
-			 >= info->data.temp_t3_thres_minus_x_degree))
-		    || ((sw_jeita->sm == TEMP_T1_TO_T2)
-			&& (info->battery_temp
-			    <= info->data.temp_t2_thres_plus_x_degree))) {
-			chr_err("[SW_JEITA] Battery Temperature not recovery to normal temperature charging mode yet!!\n");
-		} else {
 			chr_err("[SW_JEITA] Battery Normal Temperature between %d and %d !!\n",
 				info->data.temp_t2_thres,
 				info->data.temp_t3_thres);
 			sw_jeita->sm = TEMP_T2_TO_T3;
-		}
 	} else if (info->battery_temp >= info->data.temp_t1_thres) {
-		if ((sw_jeita->sm == TEMP_T0_TO_T1
-		     || sw_jeita->sm == TEMP_BELOW_T0)
-		    && (info->battery_temp
-			<= info->data.temp_t1_thres_plus_x_degree)) {
-			if (sw_jeita->sm == TEMP_T0_TO_T1) {
-				chr_err("[SW_JEITA] Battery Temperature between %d and %d !!\n",
-					info->data.temp_t1_thres_plus_x_degree,
-					info->data.temp_t2_thres);
-			}
-			if (sw_jeita->sm == TEMP_BELOW_T0) {
-				chr_err("[SW_JEITA] Battery Temperature between %d and %d,not allow charging yet!!\n",
-					info->data.temp_t1_thres,
-					info->data.temp_t1_thres_plus_x_degree);
-				sw_jeita->charging = false;
-			}
-		} else {
 			chr_err("[SW_JEITA] Battery Temperature between %d and %d !!\n",
 				info->data.temp_t1_thres,
 				info->data.temp_t2_thres);
 
 			sw_jeita->sm = TEMP_T1_TO_T2;
-		}
 	} else if (info->battery_temp >= info->data.temp_t0_thres) {
-		if ((sw_jeita->sm == TEMP_BELOW_T0)
-		    && (info->battery_temp
-			<= info->data.temp_t0_thres_plus_x_degree)) {
-			chr_err("[SW_JEITA] Battery Temperature between %d and %d,not allow charging yet!!\n",
-				info->data.temp_t0_thres,
-				info->data.temp_t0_thres_plus_x_degree);
-
-			sw_jeita->charging = false;
-		} else {
 			chr_err("[SW_JEITA] Battery Temperature between %d and %d !!\n",
 				info->data.temp_t0_thres,
 				info->data.temp_t1_thres);
 
 			sw_jeita->sm = TEMP_T0_TO_T1;
-		}
+	} else if (info->battery_temp >= info->data.temp_neg_10_thres) {
+			chr_err("[SW_JEITA] Battery Temperature between %d and %d !!\n",
+				info->data.temp_neg_10_thres,
+				info->data.temp_t0_thres);
+
+			sw_jeita->sm = TEMP_BELOW_T0;
 	} else {
 		chr_err("[SW_JEITA] Battery below low Temperature(%d) !!\n",
-			info->data.temp_t0_thres);
-		sw_jeita->sm = TEMP_BELOW_T0;
+			info->data.temp_neg_10_thres);
+		sw_jeita->sm = TEMP_BELOW_NEG_T0;
 		sw_jeita->charging = false;
 	}
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	hq_jeita_config(info);
+#endif
 
 	/* set CV after temperature changed */
 	/* In normal range, we adjust CV dynamically */
@@ -1356,9 +1511,12 @@ void do_sw_jeita_state_machine(struct charger_manager *info)
 		} else if (sw_jeita->sm == TEMP_T0_TO_T1) {
 			sw_jeita->cc = info->data.jeita_temp_t0_to_t1_cc;
 			sw_jeita->cv = info->data.jeita_temp_t0_to_t1_cv;
-		} else if (sw_jeita->sm == TEMP_BELOW_T0)
+		} else if (sw_jeita->sm == TEMP_BELOW_T0) {
+			sw_jeita->cc = info->data.jeita_temp_below_t0_cc;
 			sw_jeita->cv = info->data.jeita_temp_below_t0_cv;
-		else
+		} else if (sw_jeita->sm == TEMP_BELOW_NEG_T0) {
+			sw_jeita->cv = info->data.jeita_temp_below_t0_cv;
+		} else
 			sw_jeita->cv = info->data.battery_cv;
 	} else {
 		sw_jeita->cc = info->data.jeita_temp_t2_to_t3_cc;
@@ -1615,7 +1773,7 @@ void mtk_charger_int_handler(void)
 	} else {
 		temp = battery_get_bat_temperature();
 		pr_err("dhx---temp:%d\n", temp);
-		if (temp >= 0 && temp <= 60)
+		if (temp >= -10 && temp <= 60)
 			charger_manager_notifier(pinfo, CHARGER_NOTIFY_START_CHARGING);
 	}
 
@@ -2238,10 +2396,16 @@ static int charger_routine_thread(void *arg)
 
 		if (is_disable_charger() == false) {
 			if (is_charger_on == true) {
+#ifdef CONFIG_TOUCHSCREEN_NT36xxx_SPI
+				tp_charger_status = true;
+#endif
 				if (info->do_algorithm)
 					info->do_algorithm(info);
 				wakeup_sc_algo_cmd(&pinfo->sc.data, SC_EVENT_CHARGING, 0);
 			} else
+#ifdef CONFIG_TOUCHSCREEN_NT36xxx_SPI
+				tp_charger_status = false;
+#endif
 				wakeup_sc_algo_cmd(&pinfo->sc.data, SC_EVENT_STOP_CHARGING, 0);
 		} else
 			chr_debug("disable charging\n");
@@ -2280,12 +2444,15 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 		chr_err("found SwitchCharging\n");
 		mtk_switch_charging_init(info);
 	}
-#ifdef CONFIG_MTK_DUAL_CHARGER_SUPPORT
+
 	if (strcmp(info->algorithm_name, "DualSwitchCharging") == 0) {
 		pr_debug("found DualSwitchCharging\n");
+#if !defined(CONFIG_MTK_DUAL_CHARGER_SUPPORT)
+		mtk_switch_charging_init(info);
+#else
 		mtk_dual_switch_charging_init(info);
-	}
 #endif
+	}
 
 	info->disable_charger = of_property_read_bool(np, "disable_charger");
 	info->enable_sw_safety_timer =
@@ -2484,6 +2651,12 @@ static int mtk_charger_parse_dt(struct charger_manager *info,
 		info->data.jeita_temp_t0_to_t1_cc = val;
 		chr_err("use default JEITA_TEMP_T0_TO_T1_CC:%d\n",
 			info->data.jeita_temp_t0_to_t1_cc);
+	}
+
+	if (of_property_read_u32(np, "jeita_temp_below_t0_cc", &val) >= 0) {
+		info->data.jeita_temp_below_t0_cc = val;
+		chr_err("use default jeita_temp_below_t0_cc:%d\n",
+			info->data.jeita_temp_below_t0_cc);
 	}
 
 	if (of_property_read_u32(np, "jeita_temp_above_t4_cv", &val) >= 0)
@@ -4216,7 +4389,7 @@ static int mtk_charger_probe(struct platform_device *pdev)
 	struct device_node *boot_node = NULL;
 	struct tag_bootmode *tag = NULL;
 	int boot_mode = 11;//UNKNOWN_BOOT
-	
+
 	chr_err("%s: starts\n", __func__);
 	
 	// workaround for mt6768 
@@ -4237,12 +4410,12 @@ static int mtk_charger_probe(struct platform_device *pdev)
 				boot_mode = tag->bootmode;
 		}
 	}
-	
+
 	info = devm_kzalloc(&pdev->dev, sizeof(*info), GFP_KERNEL);
 	if (!info)
 		return -ENOMEM;
 	pinfo = info;
-	
+
 	platform_set_drvdata(pdev, info);
 	info->pdev = pdev;
 	mtk_charger_parse_dt(info, &pdev->dev);
