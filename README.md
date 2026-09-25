@@ -24,6 +24,8 @@ Built with **ReSukiSU** and **SUSFS** support.
 * SUSFS v2.3.0-R28 support
 * SELinux Enforcing
 * Linux 4.19.325
+* NoMount
+* WireGuard
 * More later...
 
 ---
