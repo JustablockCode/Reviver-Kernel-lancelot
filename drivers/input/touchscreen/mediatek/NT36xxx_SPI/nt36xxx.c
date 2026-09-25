@@ -1654,7 +1654,7 @@ static ssize_t nvt_irq_show(
 	ssize_t count = 0;
 	struct irq_desc *desc = irq_to_desc(ts->client->irq);
 
-	count = snprintf(buf, sizeof(buf), "irq_depth:%d\n", desc->depth);
+	count = scnprintf(buf, PAGE_SIZE, "irq_depth:%d\n", desc->depth);
 
 	return count;
 }
