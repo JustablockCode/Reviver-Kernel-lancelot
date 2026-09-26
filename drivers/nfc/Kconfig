@@ -26,6 +26,15 @@ config NFC_PN553_DEVICES
 
 	  You can say N here if you don't have any SPI connected to your computer.
 
+config NFC_PN553_19A_DEVICES
+	bool "NXP pn553 NCI driver for the nq-nci node (Redmi eos)"
+	depends on I2C
+	help
+	  Driver for the NXP NFC controller described by a "nq-nci" device
+	  tree node, as used by the eos variant of the selene family.  It
+	  only binds to that compatible, so it is safe to enable next to
+	  NFC_PN553_DEVICES on devices without the node.
+
 config NFC_MEI_PHY
 	tristate "MEI bus NFC device support"
 	depends on INTEL_MEI && NFC_HCI
