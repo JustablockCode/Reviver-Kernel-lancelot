@@ -1704,3 +1704,7 @@ config TARGET_PRODUCT_LANCELOT
 config TARGET_PRODUCT_MERLIN
         bool "Target product is merlin"
         default n
+
+config TARGET_PRODUCT_SELENE
+	bool "target product is selene"
+	default n
