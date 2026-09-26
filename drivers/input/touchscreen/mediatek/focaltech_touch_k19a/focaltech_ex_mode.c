@@ -32,6 +32,7 @@
 /*****************************************************************************
 * 1.Included header files
 *****************************************************************************/
+#include <linux/power_supply.h>
 #include "focaltech_core.h"
 
 /*****************************************************************************
@@ -360,6 +361,42 @@ static struct attribute_group fts_touch_mode_group = {
 	.attrs = fts_touch_mode_attrs,
 };
 
+static struct notifier_block fts_psy_nb;
+static struct work_struct fts_charger_work;
+
+/*
+ * Charger noise makes the panel report ghost touches, so turn on the charger
+ * mode of the IC whenever any external supply is online. While the panel is
+ * suspended, only record the state: resume restores it through
+ * fts_ex_mode_recovery().
+ */
+static void fts_charger_work_fn(struct work_struct *work)
+{
+	struct fts_ts_data *ts_data = fts_data;
+	struct input_dev *input_dev = ts_data->input_dev;
+	bool online = power_supply_is_system_supplied() > 0;
+
+	mutex_lock(&input_dev->mutex);
+	if (online != ts_data->charger_mode) {
+		if (ts_data->suspended ||
+		    fts_ex_mode_switch(MODE_CHARGER, online) >= 0) {
+			ts_data->charger_mode = online;
+			FTS_INFO("charger mode %s", online ? "on" : "off");
+		}
+	}
+	mutex_unlock(&input_dev->mutex);
+}
+
+/* power_supply notifiers run in atomic context, so defer the bus write */
+static int fts_psy_notifier_call(struct notifier_block *nb,
+				 unsigned long event, void *data)
+{
+	if (event == PSY_EVENT_PROP_CHANGED)
+		schedule_work(&fts_charger_work);
+
+	return NOTIFY_DONE;
+}
+
 int fts_ex_mode_recovery(struct fts_ts_data *ts_data)
 {
 	if (ts_data->glove_mode) {
@@ -399,11 +436,21 @@ int fts_ex_mode_init(struct fts_ts_data *ts_data)
 		FTS_DEBUG("create sysfs(ex_mode) succeedfully");
 	}
 
+	INIT_WORK(&fts_charger_work, fts_charger_work_fn);
+	fts_psy_nb.notifier_call = fts_psy_notifier_call;
+	ret = power_supply_reg_notifier(&fts_psy_nb);
+	if (ret < 0)
+		FTS_ERROR("register power_supply notifier fail: %d", ret);
+	/* pick up a charger that was plugged in before probe */
+	schedule_work(&fts_charger_work);
+
 	return 0;
 }
 
 int fts_ex_mode_exit(struct fts_ts_data *ts_data)
 {
+	power_supply_unreg_notifier(&fts_psy_nb);
+	cancel_work_sync(&fts_charger_work);
 	sysfs_remove_group(&ts_data->dev->kobj, &fts_touch_mode_group);
 	return 0;
 }
