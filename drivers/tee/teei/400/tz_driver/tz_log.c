@@ -204,26 +204,24 @@ static void tz_driver_dump_logs(struct tz_log_state *s)
 int teei_log_fn(void *work)
 {
 	int retVal = 0;
-#ifdef CONFIG_MICROTRUST_TZ_LOG
-	struct tz_log_state *s;
-	unsigned long flags;
 
-	s = g_tz_log_state;
-#endif
-
-	while (1) {
+	while (!kthread_should_stop()) {
 		if (switch_input_index == switch_output_index) {
-			retVal = wait_for_completion_interruptible(
-							&teei_log_comp);
+			retVal = wait_for_completion_interruptible(&teei_log_comp);
 			if (retVal != 0)
 				continue;
 		}
 
 #ifdef CONFIG_MICROTRUST_TZ_LOG
-		msleep(20);
-		tz_driver_dump_logs(s);
+		{
+			struct tz_log_state *s = g_tz_log_state;
+
+			if (s && s->log && s->log->put != s->get)
+				tz_driver_dump_logs(s);
+		}
 #endif
 
+		usleep_range(10000, 20000);
 	}
 
 	return NOTIFY_OK;
