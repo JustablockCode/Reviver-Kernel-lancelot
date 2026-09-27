@@ -914,6 +914,10 @@ void battery_update(struct battery_data *bat_data)
 	if (!primary_charger) {
 		pr_err("primary_charger is NULL\n");
 		primary_charger = get_charger_by_name("primary_chg");
+		if (!primary_charger) {
+			pr_err("primary_charger is NULL again\n");
+			return;
+		}
 	}
 	charger_dev_is_charging_done(primary_charger, &chg_done);
 

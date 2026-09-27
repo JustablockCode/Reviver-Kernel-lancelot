@@ -30,7 +30,7 @@
 	/* chosen */
 	chosen: chosen {
 		bootargs = "console=tty0 console=ttyS0,921600n1 root=/dev/ram \
-vmalloc=496M swiotlb=noforce \
+vmalloc=400M slub_debug=OFZPU swiotlb=noforce \
 cgroup.memory=nosocket,nokmem \
 firmware_class.path=/vendor/firmware \
 page_owner=on loop.max_part=7";
@@ -1547,9 +1547,6 @@ page_owner=on loop.max_part=7";
 		seninf_6_fifo_full = <333>;
 		seninf_7_fifo_full = <334>;
 		dsi0_te_from_infra = <898>;
-		max_prefetch_cnt = <1>;
-		prefetch_size = <96>;
-		sram_size_cpr_64 = <64>;
 		mmsys_config = <&mmsys_config>;
 		mdp_rdma0 = <&mdp_rdma0>;
 		mdp_rsz0 = <&mdp_rsz0>;
@@ -2339,7 +2336,11 @@ defined(CONFIG_MTK_CAM_SECURITY_SUPPORT)
 
 	spi0:spi0@1100a000 {
 		compatible = "mediatek,mt6765-spi";
-		mediatek,pad-select = <0>,<1>;
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
+		mediatek,pad-select = <0>;
+#else
+                mediatek,pad-select = <0>,<1>;
+#endif
 		reg = <0 0x1100a000 0 0x1000>;
 		interrupts = <GIC_SPI 138 IRQ_TYPE_LEVEL_LOW>;
 		clocks = <&topckgen CLK_TOP_SYSPLL3_D2>,

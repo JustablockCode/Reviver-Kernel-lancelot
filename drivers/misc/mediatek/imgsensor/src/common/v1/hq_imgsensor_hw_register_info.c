@@ -76,7 +76,7 @@ typedef struct HQ_IMGSENSOR_HQ_REGISTER_INFO {
  * should to be modified before factory P1 node. Need to add
  * < sunny_8856_i > < ofilm_8856_i >
  ************************************************************************/
-#if defined(MERLIN_MSM_CAMERA_HW_INFO)
+#if defined(CONFIG_TARGET_PRODUCT_MERLIN)
 #define MAX_SENSOR_NAME_SIZE 30
 #define MAX_HW_REG_NAME_SIZE 20
 #undef  MAX_VENDOR_COUNT

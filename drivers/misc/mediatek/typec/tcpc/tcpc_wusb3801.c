@@ -545,39 +545,6 @@ static int wusb3801_tcpc_deinit(struct tcpc_device *tcpc_dev)
 	return 0;
 }
 
-static int wusb3801_tcpc_get_mode(struct tcpc_device *tcpc, int *typec_mode)
-{
-	int rc;
-	int status, type;
-	rc = i2c_smbus_read_byte_data(w_client, WUSB3801_REG_STATUS);
-	if (rc < 0) {
-		*typec_mode = 0;
-		pr_err("%s: failed to read reg status\n", __func__);
-		return 0;
-	}
-	pr_info("%s WUSB3801_REG_STATUS : 0x%02x\n", __func__, rc);
-
-	status = (rc & WUSB3801_ATTACH) ? true : false;
-	type = status ? \
-			rc & WUSB3801_TYPE_MASK : WUSB3801_TYPE_INVALID;
-	pr_info("sts[0x%02x], type[0x%02x]\n", status, type);
-
-	switch (type) {
-	case WUSB3801_TYPE_SNK:
-		*typec_mode = 2;
-		break;
-	case WUSB3801_TYPE_SRC:
-		*typec_mode = 1;
-		break;
-	default:
-		*typec_mode = 0;
-		break;
-	}
-	pr_err("%s: wusb3801 type[0x%02x]\n", __func__, type);
-
-	return 0;
-}
-
 static int wusb3801_set_role(struct tcpc_device *tcpc, int mode)
 {
 	int rc = 0;
@@ -642,7 +609,6 @@ static struct tcpc_ops wusb3801_tcpc_ops = {
 	.get_cc = wusb3801_get_cc,
 	.set_cc = wusb3801_set_cc,
 	.set_role = wusb3801_set_role,
-	.get_mode = wusb3801_tcpc_get_mode,
 	.set_polarity = wusb3801_set_polarity,
 	.set_low_rp_duty = wusb3801_set_low_rp_duty,
 	.set_vconn = wusb3801_set_vconn,

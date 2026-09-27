@@ -149,24 +149,6 @@ static int fusb30x_tcpc_deinit(struct tcpc_device *tcpc_dev)
 	pr_info("%s: enter \n",__func__);
 	return 0;
 }
-int fusb30x_get_mode(struct tcpc_device *tcpc, int *typec_mode)
-{
-	struct fusb30x_chip* chip = fusb30x_GetChip();
-
-	if (chip->port.sourceOrSink == SINK) {
-		*typec_mode = 1;
-	}
-	else if (chip->port.sourceOrSink == SOURCE) {
-		*typec_mode = 2;
-	}
-	else {
-		*typec_mode = 0;
-	}
-
-	pr_info("%s - typec_mode:%d,sourceOrSink:%x\n",
-		__func__, *typec_mode, chip->port.sourceOrSink);
-	return 0;
-}
 int fusb30x_set_role(struct tcpc_device *tcpc, int state)
 {
 	pr_info("%s: enter \n",__func__);
@@ -256,7 +238,6 @@ static struct tcpc_ops fusb30x_tcpc_ops = {
 	.set_low_rp_duty = fusb30x_set_low_rp_duty,
 	.set_vconn = fusb30x_set_vconn,
 	.set_role = fusb30x_set_role,
-	.get_mode = fusb30x_get_mode,
 	.deinit = fusb30x_tcpc_deinit,
 	.is_low_power_mode = fusb30x_is_low_power_mode,
 	.set_low_power_mode = fusb30x_set_low_power_mode,

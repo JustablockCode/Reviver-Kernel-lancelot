@@ -439,9 +439,9 @@ struct tcpc_device *tcpc_device_register(struct device *parent,
 	 * please use it instead of "WAKE_LOCK_SUSPEND"
 	 */
 	tcpc->attach_wake_lock =
-		wakeup_source_register(NULL, "tcpc_attach_wake_lock");
+		wakeup_source_register(&tcpc->dev, "tcpc_attach_wake_lock");
 	tcpc->detach_wake_lock =
-		wakeup_source_register(NULL, "tcpc_detach_wake_lock");
+		wakeup_source_register(&tcpc->dev, "tcpc_detach_wake_lock");
 
 	tcpci_timer_init(tcpc);
 #ifdef CONFIG_USB_POWER_DELIVERY
@@ -576,6 +576,7 @@ static void tcpc_event_init_work(struct work_struct *work)
 	tcpc->bat_psy = power_supply_get_by_name("battery");
 	if (!tcpc->bat_psy) {
 		TCPC_ERR("%s get battery psy fail\n", __func__);
+		tcpci_unlock_typec(tcpc);
 		return;
 	}
 	tcpc->charging_status = BSDO_BAT_INFO_IDLE;
