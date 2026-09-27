@@ -385,7 +385,7 @@ const struct ISR_TABLE IRQ_CB_TBL[ISP_IRQ_TYPE_AMOUNT] = {
 #else
 	{ISP_Irq_CAM_A,     0,  "cam2"},
 	{ISP_Irq_CAM_B,     0,  "cam3"},
-	{ISP_Irq_DIP_A,     0,  "dip"},
+	{ISP_Irq_DIP_A,     0,  "dip1"},
 	{ISP_Irq_CAMSV_0,   0,  "camsv1"},
 	{ISP_Irq_CAMSV_1,   0,  "camsv2"},
 	{ISP_Irq_CAMSV_2,   0,  "camsv3"},
