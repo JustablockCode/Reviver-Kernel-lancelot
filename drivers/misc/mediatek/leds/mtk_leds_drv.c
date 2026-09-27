@@ -63,8 +63,6 @@ static int I2C_SET_FOR_BACKLIGHT  = 350;
 #define CONTROL_BL_TEMPERATURE
 #endif
 
-#define MT_LED_INTERNAL_LEVEL_BIT_CNT 10
-
 /******************************************************************************
  * for DISP backlight High resolution
  *****************************************************************************/
