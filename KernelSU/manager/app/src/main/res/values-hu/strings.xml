@@ -101,7 +101,6 @@
     <string name="flashing">Telepítés</string>
     <string name="flash_success">Sikeres telepítés</string>
     <string name="flash_failed">Sikertelen telepítés</string>
-    <string name="selected_lkm">Kiválasztott LKM: %s</string>
     <string name="save_log">Napló mentése logfájlba</string>
     <string name="log_saved">Napló elmentve</string>
     <string name="settings_sucompat">SU bináris átirányítása</string>
@@ -528,7 +527,6 @@
     <string name="susfs_enable_config">SuSFS Menedzser</string>
     <string name="susfs_enable_config_summary">Beépített SuSFS Menedzser engedélyezése vagy letiltása. Valamely harmadik féltől származó modullal összeférhetetlen lehet.</string>
     <string name="susfs_config_disable_warning">Beépített SuSFS Menedzser letiltva. Engedélyezd, vagy telepíts egy harmadik féltől származó modult a SuSFS funkciók használatához.</string>
-    <string name="about_anime_character_sticker"><![CDATA[Az ikonok egy különleges megállapodás keretében kerültek licencelésre: a rajzokat 怡子曰曰 készítette, a szerzői jogok 明风 OuO-t illetik, a vektorizált ikonokat pedig ez a projekt biztosítja.]]></string>
     <string name="require_manager_version">Root menedzser frissítése szükséges</string>
     <string name="require_kernel_version">Kernel frissítése szükséges. Kattints a telepítéshez.</string>
     <string name="require_kernel_version_gki">Kernel frissítése szükséges</string>
@@ -543,4 +541,23 @@
     <string name="sort_name">Név szerint</string>
     <string name="enable_floating_bottom_bar">Lebegő alsó sáv</string>
     <string name="enable_floating_bottom_bar_summary">Apple iOS stílusú lebegő alsó sáv használata.</string>
+    <string name="settings_soft_reboot_summary">Háttérrendszer újraindítása a készülék teljes újraindítása helyett modul telepítés, frissítés, vagy átkapcsolása után.</string>
+    <string name="settings_soft_reboot">Háttérrendszer újraindítás teljes újraindítás helyett</string>
+    <string name="advanced_options">Haladó beállítások</string>
+    <string name="allow_shell">Parancsértelmező Root jogosultságokkal</string>
+    <string name="allow_shell_summary">Parancsértelmező futtatása Root jogosultságokkal alapértelmezetten. Csak akkor engedélyezd, amennyiben feltétlenül szükséges.</string>
+    <string name="enable_adb">ADB kényszerített indítása android rendszerrel</string>
+    <string name="enable_adb_summary">USB hibaelhárítás kényszerített indítása az android rendszerrel és ADB hitelesítés letiltása. Csak akkor engedélyezd, amennyiben feltétlenül szükséges.</string>
+    <string name="skip_ksud">Ksud telepítés mellőzése</string>
+    <string name="skip_ksud_summary">Ksud nem fog települni. Csak akkor engedélyezd, amennyiben feltétlenül szükséges.</string>
+    <string name="ak3_select_zip">Válassz egy AnyKernel3 zip fájlt a telepítéshez</string>
+    <string name="install_upload_lkm_file_summary">Egyéni .ko fájl használata a beépített LKM helyett</string>
+    <string name="install_force_backup_summary">Győződj meg arról, hogy a kiválasztott boot képfájl gyári</string>
+    <string name="install_force_backup">Biztonsági mentés mint gyári képfálj</string>
+    <string name="settings_pager_gesture_native">Alapértelmezett</string>
+    <string name="settings_pager_gesture_cross_axis">Kereszttengelyes</string>
+    <string name="settings_pager_gesture_ios_like">iOS stílusú</string>
+    <string name="settings_enable_swipe_dismiss">Visszacsúsztató navigációs mozdulat</string>
+    <string name="settings_enable_swipe_dismiss_summary">Csúsztasd az ujjad a képernyő szélétől befelé, hogy visszatérj az előző oldalra.</string>
+    <string name="settings_pager_gesture_mode">Horizontális lapozás</string>
 </resources>

@@ -58,7 +58,7 @@
     <string name="reboot_download">Reboot to Download</string>
     <string name="reboot_edl">Reboot to EDL</string>
     <string name="about">About</string>
-    <string name="about_anime_character_sticker"><![CDATA[The icons are licensed under a special arrangement: drawn by 怡子曰曰, the copyright is held by 明风 OuO, and the vectorized icons are provided by this project.]]></string>
+    <string name="about_app_icon"><![CDATA[The icons are ALL RIGHTS RESERVED and copyright is held by %1$s]]></string>
     <string name="get_source_code">Check for source code</string>
     <string name="get_source_code_detail">Check for source code on GitHub</string>
     <string name="join_telegram_group">Join community</string>
@@ -84,6 +84,8 @@
     <string name="jailbreak_flash_warning_countdown">Continue (%1$d)</string>
     <string name="settings_auto_jailbreak">Auto jailbreak</string>
     <string name="settings_auto_jailbreak_summary">Automatically use Magica to escalate privileges when Permissive SELinux is detected at boot. Requires granting autostart permission to this app.</string>
+    <string name="settings_soft_reboot">Soft restart instead of reboot</string>
+    <string name="settings_soft_reboot_summary">Use soft restart instead of a full reboot when installing, updating, or toggling modules.</string>
     <string name="settings_adb_root" translatable="false">ADB Root</string>
     <string name="settings_adb_root_summary">Run adbd daemon with root privileges</string>
     <string name="settings_selinux_hide">Hide SELinux modification</string>
@@ -172,6 +174,13 @@
     <string name="install_only_support_ko_file">Only .ko files are supported</string>
     <string name="select_file_tip">%1$s partition image is recommended</string>
     <string name="select_kmi">Select KMI</string>
+    <string name="advanced_options">Advanced Options</string>
+    <string name="allow_shell">Always grant Root to Shell</string>
+    <string name="allow_shell_summary">Always allow adb shell to call SU command. Do not enable this unless absolutely necessary.</string>
+    <string name="enable_adb">Force enable adb on boot</string>
+    <string name="enable_adb_summary">Force enable USB debugging and disable adb authentication. Do not enable this unless absolutely necessary.</string>
+    <string name="install_force_backup">Backup as stock image</string>
+    <string name="install_force_backup_summary">Please make sure your selected boot image is a stock image</string>
     <string name="settings_uninstall">Uninstall</string>
     <string name="settings_uninstall_temporary">Uninstall temporarily</string>
     <string name="settings_uninstall_permanent">Uninstall permanently</string>
@@ -182,7 +191,6 @@
     <string name="flashing">Flashing</string>
     <string name="flash_success">Flash success</string>
     <string name="flash_failed">Flash failed</string>
-    <string name="selected_lkm">Selected LKM: %s</string>
     <string name="save_log">Save logs</string>
     <string name="log_saved">Logs saved</string>
     <string name="unknown_module">Unknown module</string>
@@ -251,14 +259,18 @@
     <string name="choose_theme_color">Choose a theme colour</string>
     <string name="horizon_kernel">Install Anykernel3</string>
     <string name="horizon_kernel_summary">Flash AnyKernel3 kernel file</string>
+    <string name="both_kernel_and_module_files">Input zips have both anykernel3 and modules</string>
+    <string name="more_than_one_kernel_file">More than 1 anykernel3 files found in input files</string>
     <string name="root_required">Requires root privileges</string>
     <string name="failed_reboot">Reboot Failed</string>
     <string name="custom_settings">Custom settings</string>
     <string name="theme_color">Theme Color</string>
     <string name="horizon_flash_complete">Flash Complete</string>
-    <string name="horizon_preparing">Preparing...</string>
-    <string name="horizon_copying_files">Copying files...</string>
-    <string name="horizon_flashing">Flashing kernel...</string>
+    <string name="horizon_preparing">Preparing…</string>
+    <string name="horizon_copying_files">Copying files…</string>
+    <string name="horizon_flashing">Flashing kernel…</string>
+    <string name="module_shortcut_copy_scheme">Copy URL scheme</string>
+    <string name="module_shortcut_scheme_copied">URL scheme copied</string>
     <string name="horizon_flash_complete_status">Flash completed</string>
     <string name="select_slot_title">Select Flash Slot</string>
     <string name="select_slot_description">Please select the target slot for flashing boot</string>
@@ -287,6 +299,12 @@
     <string name="predictive_back_exit_direction_follow_gesture">Follow Gesture</string>
     <string name="predictive_back_exit_direction_always_right">Always Right</string>
     <string name="predictive_back_exit_direction_always_left">Always Left</string>
+    <string name="settings_enable_swipe_dismiss">Swipe back gesture</string>
+    <string name="settings_enable_swipe_dismiss_summary">Swipe from the edge to return to the previous page.</string>
+    <string name="settings_pager_gesture_mode">Pager gesture mode</string>
+    <string name="settings_pager_gesture_native">Default</string>
+    <string name="settings_pager_gesture_cross_axis">Cross-axis</string>
+    <string name="settings_pager_gesture_ios_like">iOS-like</string>
     <string name="back">Comeback</string>
     <string name="background_set_success">Background set successfully</string>
     <string name="background_removed">Removed custom backgrounds</string>
@@ -403,6 +421,7 @@
     <string name="network_offline">You are offline</string>
     <string name="network_retry">Retry</string>
     <string name="please_check_network">Please check your internet connection and try again</string>
+    <string name="internal_server_error">Internal Server Error</string>
     <string name="confirm_install_module_title">Do you want install %s module?</string>
     <string name="assets_multiple_select_dialog_title">Select assets you want to install</string>
     <string name="assets_multiple_select_dialog_content_description">Size: %1$s, Download count: %2$s</string>
@@ -546,4 +565,8 @@
     <string name="settings_check_beta_update_summary">Auto-check beta builds from the main branch</string>
     <string name="enable_floating_bottom_bar">Floating bottom bar</string>
     <string name="enable_floating_bottom_bar_summary">Use Apple style floating bottom bar.</string>
+    <string name="ak3_select_zip">Select an AnyKernel3 zip file to flash</string>
+    <string name="install_upload_lkm_file_summary">Use a custom .ko file instead of the built-in LKM</string>
+    <string name="skip_ksud">Do not install ksud</string>
+    <string name="skip_ksud_summary">Cancel ksud installation. Do not enable this unless absolutely necessary.</string>
 </resources>

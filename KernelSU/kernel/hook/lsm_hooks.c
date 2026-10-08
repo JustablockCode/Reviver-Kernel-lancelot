@@ -214,8 +214,8 @@ static inline void set_selinux_ops()
 }
 
 #define ASSIGN_ORIG_AND_HOOK(TARGET, HANDLER, ARGS_DECL, ARGS_CALL)                                                    \
-    orig_##TARGET = ops->TARGET;                                                                                       \
-    ops->TARGET = hook_##TARGET;
+    orig_##TARGET = (typeof(orig_##TARGET))ops->TARGET;                                                                \
+    ops->TARGET = (typeof(ops->TARGET))hook_##TARGET;
 
 static int ksu_register_lsm_hook(void *data)
 {
@@ -278,7 +278,7 @@ show_not_found_warning:
     pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
     pr_alert("**                                                         **");
     pr_alert("**                 selinux_ops NOT FOUND                   **");
-    pr_alert("**     ReSukiSU won't working due lost necessary hooks     **");
+    pr_alert("**       BakaSU won't working due lost necessary hooks     **");
     pr_alert("**                                                         **");
     pr_alert("**     NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE NOTICE    **");
     pr_alert("*************************************************************");
