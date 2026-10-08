@@ -134,3 +134,7 @@ all.config
 
 *.orig
 *.rej
+
+
+# output
+/out/

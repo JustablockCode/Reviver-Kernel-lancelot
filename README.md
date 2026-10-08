@@ -2,7 +2,7 @@
 
 Custom 4.19 kernel for the **Xiaomi Redmi 9 / lancelot**.
 
-Built with **ReSukiSU** and **SUSFS** support.
+Built with **BakaSU** (formerly ReSukiSU) and **SUSFS** support.
 
 ---
 
@@ -20,7 +20,7 @@ Built with **ReSukiSU** and **SUSFS** support.
 
 ## ✨ Features
 
-* ReSukiSU v4.2.0-rc2 support
+* BakaSU support (rebranded from ReSukiSU)
 * SUSFS v2.3.0-R28 support
 * SELinux Enforcing
 * Linux 4.19.325
@@ -32,7 +32,9 @@ Built with **ReSukiSU** and **SUSFS** support.
 
 ## 📥 Downloads
 
-### [ReSukiSU Manager](https://github.com/ReSukiSU/ReSukiSU/releases)
+### ⚠️ Important
+
+This kernel requires a specific build of the **BakaSU Manager** that matches its drivers. The standard manager from the BakaSU releases may not work. Download the correct manager build from the [Releases](https://github.com/JustablockCode/Reviver-Kernel-lancelot/releases) page.
 
 ### Kernel Releases
 
@@ -51,7 +53,7 @@ Check the [Releases](https://github.com/JustablockCode/Reviver-Kernel-lancelot/r
 
 ## 📜 Credits
 
-* ReSukiSU
+* BakaSU (formerly ReSukiSU)
 * SUSFS
 * Linux Kernel
 * mt6768-S for the original kernel source and its contributors
