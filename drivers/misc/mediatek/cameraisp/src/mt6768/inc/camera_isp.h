@@ -593,7 +593,9 @@ struct ISP_PM_QOS_INFO_STRUCT {
 	unsigned int       bw_value;
 	unsigned int       module;
 	unsigned int       fps;
+#ifndef CONFIG_MTK_CAMERA_ISP_PM_QOS_NO_PORT_BW
 	struct ISP_BW      port_bw[_cam_max_]; /* For k510 compatible */
+#endif
 };
 
 /*******************************************************************************
@@ -687,7 +689,8 @@ enum ISP_CMD_ENUM {
 	ISP_CMD_SET_PM_QOS_INFO,
 	ISP_CMD_TRANSFOR_CCU_REG,
 	ISP_CMD_SET_SEC_DAPC_REG,
-	ISP_CMD_SET_SEC_ENABLE
+	ISP_CMD_SET_SEC_ENABLE,
+	ISP_CMD_SET_VIR_CQCNT
 };
 
 enum ISP_HALT_DMA_ENUM {
@@ -806,6 +809,8 @@ enum ISP_HALT_DMA_ENUM {
 	_IOWR(ISP_MAGIC, ISP_CMD_TRANSFOR_CCU_REG,  unsigned char*)
 #define ISP_SET_SEC_ENABLE \
 	_IOW(ISP_MAGIC, ISP_CMD_SET_SEC_ENABLE, unsigned int)
+#define ISP_SET_VIR_CQCNT \
+	_IOWR(ISP_MAGIC, ISP_CMD_SET_VIR_CQCNT, unsigned int)
 
 #ifdef CONFIG_COMPAT
 #define COMPAT_ISP_READ_REGISTER      \
@@ -862,4 +867,3 @@ int32_t ISP_EndGCECallback(uint32_t taskID, uint32_t regCount,
 				uint32_t *regValues);
 
 #endif
-

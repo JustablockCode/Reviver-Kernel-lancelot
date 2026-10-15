@@ -1706,5 +1706,5 @@ config TARGET_PRODUCT_MERLIN
         default n
 
 config TARGET_PRODUCT_SELENE
-        bool "Target product is selene"
-        default n
+	bool "target product is selene"
+	default n
