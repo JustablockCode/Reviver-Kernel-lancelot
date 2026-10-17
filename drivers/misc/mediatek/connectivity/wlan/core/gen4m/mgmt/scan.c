@@ -1709,7 +1709,7 @@ void scanParsingRnrElement(IN struct ADAPTER *prAdapter,
 				/* only support neighbor AP info with
 				*  BSSID
 				*/
-				continue;
+				goto next_neighbor_ap;
 			}
 
 			/* If this BSSID existed and update time diff is
@@ -1785,6 +1785,7 @@ void scanParsingRnrElement(IN struct ADAPTER *prAdapter,
 				scanHandleRnrSsid(prScanRequest, prBssDesc,
 						ucBssidNum);
 		}
+next_neighbor_ap:
 		/* Calculate next NeighborAPInfo's index if exists */
 		ucCurrentLength += 4 + (u2TbttInfoCount * u2TbttInfoLength);
 
