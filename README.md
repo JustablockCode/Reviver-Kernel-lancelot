@@ -34,7 +34,7 @@ Built with **BakaSU** (formerly ReSukiSU) and **SUSFS** support.
 
 ### ⚠️ Important
 
-This kernel requires a specific build of the **BakaSU Manager** that matches its drivers. The standard manager from the BakaSU releases may not work. Download the correct manager build from the [Releases](https://github.com/JustablockCode/Reviver-Kernel-lancelot/releases) page.
+If the latest **BakaSU** manager from actions doesn't work with the kernel, then download the correct manager build from the [Releases](https://github.com/JustablockCode/Reviver-Kernel-lancelot/releases) page.
 
 ### Kernel Releases
 
