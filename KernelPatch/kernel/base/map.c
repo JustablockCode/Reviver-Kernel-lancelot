@@ -465,7 +465,7 @@ static uint64_t install_kp_linear(map_data_t *data, scratch_t *sc)
     return 0;
 }
 
-void __noinline _paging_init()
+void __noinline _paging_init_body(uint64_t kernel_frame)
 {
 	map_data_t buf;
 	map_data_t *data = &buf;
@@ -589,5 +589,5 @@ void __noinline _paging_init()
     ((memblock_free_f)data->map_symbol.memblock_free_relo)(old_start_pa, reserve_size);
 
     // start
-    ((start_f)start_va)(data->kimage_voffset, data->linear_voffset);
+    ((start_f)start_va)(data->kimage_voffset, data->linear_voffset, kernel_frame);
 }

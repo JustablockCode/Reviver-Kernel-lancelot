@@ -10,6 +10,9 @@
 
 #define STACK_SIZE 0x800
 
+/* Explicit AAPCS64 save area shared by the map entry and payload return. */
+#define KP_KERNEL_FRAME_SIZE 96
+
 #ifndef __ASSEMBLY__
 
 #define offsetof(TYPE, MEMBER) ((size_t) & ((TYPE *)0)->MEMBER)
@@ -69,7 +72,7 @@ typedef struct
 #endif
 
 #ifndef __ASSEMBLY__
-typedef int (*start_f)(uint64_t kimage_voffset, uint64_t linear_voffset);
+typedef int (*start_f)(uint64_t kimage_voffset, uint64_t linear_voffset, uint64_t kernel_frame);
 extern void _start_kernel();
 extern void _paging_init();
 extern void _link_base();

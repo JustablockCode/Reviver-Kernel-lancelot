@@ -49,6 +49,7 @@ BASE_SRCS += base/tlsf.c
 BASE_SRCS += base/start.c
 BASE_SRCS += base/map.c
 BASE_SRCS += base/map1.S
+BASE_SRCS += base/return.S
 BASE_SRCS += base/hook.c
 BASE_SRCS += base/fphook.c
 BASE_SRCS += base/hotpatch.c
