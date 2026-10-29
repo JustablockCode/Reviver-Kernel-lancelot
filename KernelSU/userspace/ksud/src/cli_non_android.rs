@@ -1,12 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
 
-use crate::{
-    apk_sign,
-    boot_patch::{BootPatchArgs, BootRestoreArgs},
-    defs,
-    lkm_image::BootPatchV2Args,
-};
+use crate::boot_patch::{BootPatchArgs, BootRestoreArgs};
+use crate::lkm_image::BootPatchV2Args;
+use crate::{apk_sign, defs};
 
 /// KernelSU cli for non-android
 #[derive(Parser, Debug)]

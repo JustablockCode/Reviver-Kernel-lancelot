@@ -1,3 +1,5 @@
+#include "selinux_hide.h"
+#include "selinux/sepolicy.h"
 #include <linux/cred.h>
 #include <linux/cpu.h>
 #include <linux/memory.h>
@@ -11,58 +13,21 @@
 #include <linux/moduleparam.h>
 #include <linux/mutex.h>
 #include <linux/version.h>
-#include <linux/jump_label.h>
-
 // security/selinux/include/security.h
 #include <security.h>
 #include <ss/context.h>
 #include <ss/services.h>
 #include <ss/mls.h>
 #include <ss/conditional.h>
-
 #include "avc.h"
 #include "klog.h" // IWYU pragma: keep
-#include "linux/kallsyms.h"
 #include "objsec.h"
-#include "hook/patch_memory.h"
-#include "ksu.h"
-#include "policy/feature.h"
-#include "infra/symbol_resolver.h"
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-#include "hook/lsm_hook_magic.h"
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0) || defined(KSU_COMPAT_HAS_LIST_OF_LSM_HOOKS)
-#include <linux/lsm_hooks.h>
-#endif
 
-#include "selinux/selinux.h"
-#include "selinux/sepolicy.h"
-#include "selinux_hide.h"
-#include "compat/kernel_compat.h"
-
-#ifdef KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE
-#define __maybe_static
-#else
-#define __maybe_static static
-#endif
 
 static DEFINE_MUTEX(selinux_hide_mutex);
-__maybe_static bool ksu_selinux_hide_enabled __read_mostly = false;
-// remove static in susfs
-__maybe_static bool ksu_selinux_hide_running __read_mostly = false;
+bool ksu_selinux_hide_enabled __read_mostly = false;
+bool ksu_selinux_hide_running __read_mostly = false;
 
-#ifdef KSU_COMPAT_USE_STATIC_KEY
-// We should talk to you, susfs
-// Why use manual hook instead of auto hook
-__maybe_static DEFINE_STATIC_KEY_FALSE(fake_status_initialize_key);
-#else
-static bool fake_status_initialize_key __read_mostly = false;
-#endif
-
-__maybe_static struct page *fake_status = NULL;
-static struct mutex *ksu_selinux_status_lock = NULL;
-__maybe_static void initialize_fake_status();
-
-#ifndef KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE
 enum sel_inos {
     SEL_ROOT_INO = 2,
     SEL_LOAD, /* load policy */
@@ -87,74 +52,45 @@ enum sel_inos {
     SEL_INO_NEXT, /* The next inode number to use */
 };
 
-typedef ssize_t (*write_op_fn)(struct file *, char *, size_t);
-
-static write_op_fn *selinux_write_op;
-
-#endif // #ifndef KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-// remove static in susfs
-__maybe_static int security_context_to_sid_with_policy(struct selinux_policy *policy, const char *scontext,
-                                                       u32 scontext_len, u32 *sid, u32 def_sid, gfp_t gfp_flags);
-__maybe_static int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid, char **scontext,
-                                                       u32 *scontext_len);
-__maybe_static void security_compute_av_user_with_policy(struct selinux_policy *policy, u32 ssid, u32 tsid, u16 tclass,
-                                                         struct av_decision *avd);
+static int security_context_to_sid_with_policy(struct selinux_policy *policy, const char *scontext, u32 scontext_len,
+                                               u32 *sid, u32 def_sid, gfp_t gfp_flags, u32 *orig_sid_p, int *orig_rc_p);
+static int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid, char **scontext,
+                                               u32 *scontext_len);
+static void security_compute_av_user_with_policy(struct selinux_policy *policy, u32 ssid, u32 tsid, u16 tclass,
+                                                 struct av_decision *avd);
 static void (*security_dump_masked_av_fn)(struct policydb *policydb, struct context *scontext, struct context *tcontext,
                                           u16 tclass, u32 permissions, const char *reason) = NULL;
 static void (*context_struct_compute_av_fn)(struct policydb *policydb, struct context *scontext,
                                             struct context *tcontext, u16 tclass, struct av_decision *avd,
                                             struct extended_perms *xperms) = NULL;
-#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
-// remove static in susfs
-__maybe_static struct selinux_state fake_state;
-#else
-static int dump_masked_av_helper(void *k, void *d, void *args);
-static int context_struct_to_string(struct context *context, char **scontext, u32 *scontext_len);
-static void context_struct_compute_av(struct context *scontext, struct context *tcontext, u16 tclass,
-                                      struct av_decision *avd, struct extended_perms *xperms);
-static void security_dump_masked_av(struct context *scontext, struct context *tcontext, u16 tclass, u32 permissions,
-                                    const char *reason);
-static int constraint_expr_eval(struct context *scontext, struct context *tcontext, struct context *xcontext,
-                                struct constraint_expr *cexpr);
-static void type_attribute_bounds_av(struct context *scontext, struct context *tcontext, u16 tclass,
-                                     struct av_decision *avd);
-static void avd_init(struct av_decision *avd);
-static inline u32 current_sid(void);
-static int string_to_context_struct(struct policydb *pol, struct sidtab *sidtabp, char *scontext, u32 scontext_len,
-                                    struct context *ctx, u32 def_sid);
-static int ksu_security_context_to_sid(const char *scontext, u32 scontext_len, u32 *sid, gfp_t gfp_flags);
-static int ksu_security_context_str_to_sid(const char *scontext, u32 *sid, gfp_t gfp);
-static int ksu_security_sid_to_context(u32 sid, char **scontext, u32 *scontext_len);
-static void ksu_security_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd);
-#endif
-
-#ifndef KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE
-
-static write_op_fn *context_write, *access_write;
-static write_op_fn orig_context_write, orig_access_write;
-
-static ssize_t my_write_context(struct file *file, char *buf, size_t size)
-{
-    // apply to all app uids
-    if (likely(ksu_get_uid_t(current_uid()) < 10000)) {
-        return orig_context_write(file, buf, size);
-    }
-    char *canon = NULL;
-    u32 sid, len, tmp;
-    ssize_t length;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-    length = avc_has_perm(current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__CHECK_CONTEXT, NULL);
+#define ksu_avc_has_perm_compat(...) avc_has_perm(__VA_ARGS__)
+#define ksu_security_bounded_transition_compat(...) security_bounded_transition(__VA_ARGS__)
+#else
+#define ksu_avc_has_perm_compat(...) avc_has_perm(&selinux_state, __VA_ARGS__)
+#define ksu_security_bounded_transition_compat(...) security_bounded_transition(&selinux_state, __VA_ARGS__)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
+#define ksu_task_security_struct task_security_struct
+#else
+#define ksu_task_security_struct cred_security_struct
+#endif
+
+ssize_t my_write_context(struct file *file, char *buf, size_t size)
+{
+    char *canon = NULL;
+    u32 sid, len;
+    ssize_t length;
+
+    length =
+        ksu_avc_has_perm_compat(current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__CHECK_CONTEXT, NULL);
     if (length)
         goto out;
-    length = security_context_to_sid_with_policy(backup_sepolicy, buf, size, &sid, SECSID_NULL, GFP_KERNEL);
+    length = security_context_to_sid_with_policy(backup_sepolicy, buf, size, &sid, SECSID_NULL, GFP_KERNEL, NULL, NULL);
     if (length) {
         goto out;
-    } else {
-        // sync to global sidtab
-        security_context_to_sid(buf, size, &tmp, GFP_KERNEL);
     }
 
     length = security_sid_to_context_with_policy(backup_sepolicy, sid, &canon, &len);
@@ -168,48 +104,6 @@ static ssize_t my_write_context(struct file *file, char *buf, size_t size)
                __func__, len);
         goto out;
     }
-#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
-    length = avc_has_perm(&selinux_state, current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY,
-                          SECURITY__CHECK_CONTEXT, NULL);
-    if (length)
-        goto out;
-
-    length = security_context_to_sid(&fake_state, buf, size, &sid, GFP_KERNEL);
-    if (length) {
-        goto out;
-    } else {
-        // sync to global sidtab
-        security_context_to_sid(&selinux_state, buf, size, &tmp, GFP_KERNEL);
-    }
-
-    length = security_sid_to_context(&fake_state, sid, &canon, &len);
-    if (length)
-        goto out;
-#else
-    length = avc_has_perm(current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__CHECK_CONTEXT, NULL);
-    if (length)
-        goto out;
-
-    length = ksu_security_context_to_sid(buf, size, &sid, GFP_KERNEL);
-    if (length) {
-        goto out;
-    } else {
-        // sync to global sidtab
-        ksu_security_context_to_sid(buf, size, &tmp, GFP_KERNEL);
-    }
-
-    length = ksu_security_sid_to_context(sid, &canon, &len);
-    if (length)
-        goto out;
-
-    length = -ERANGE;
-    if (len > SIMPLE_TRANSACTION_LIMIT) {
-        printk(KERN_ERR "SELinux: %s:  context size (%u) exceeds "
-                        "payload max\n",
-               __func__, len);
-        goto out;
-    }
-#endif
 
     memcpy(buf, canon, len);
     length = len;
@@ -218,26 +112,15 @@ out:
     return length;
 }
 
-static ssize_t my_write_access(struct file *file, char *buf, size_t size)
+ssize_t my_write_access(struct file *file, char *buf, size_t size)
 {
-    // apply to all app uids
-    if (likely(ksu_get_uid_t(current_uid()) < 10000)) {
-        return orig_access_write(file, buf, size);
-    }
     char *scon = NULL, *tcon = NULL;
-    u32 ssid, tsid, sconlen, tconlen, tmp;
+    u32 ssid, tsid, sconlen, tconlen;
     u16 tclass;
     struct av_decision avd;
     ssize_t length;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-    length = avc_has_perm(current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__COMPUTE_AV, NULL);
-#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
-    length =
-        avc_has_perm(&selinux_state, current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__COMPUTE_AV, NULL);
-#else
-    length = avc_has_perm(current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__COMPUTE_AV, NULL);
-#endif
+    length = ksu_avc_has_perm_compat(current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__COMPUTE_AV, NULL);
     if (length)
         goto out;
 
@@ -258,61 +141,19 @@ static ssize_t my_write_access(struct file *file, char *buf, size_t size)
     sconlen = strlen(scon);
     tconlen = strlen(tcon);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-    length = security_context_to_sid_with_policy(backup_sepolicy, scon, sconlen, &ssid, SECSID_NULL, GFP_KERNEL);
+    length =
+        security_context_to_sid_with_policy(backup_sepolicy, scon, sconlen, &ssid, SECSID_NULL, GFP_KERNEL, NULL, NULL);
     if (length) {
         goto out;
-    } else {
-        // sync to global sidtab
-        security_context_to_sid(scon, sconlen, &tmp, GFP_KERNEL);
     }
 
-    length = security_context_to_sid_with_policy(backup_sepolicy, tcon, tconlen, &tsid, SECSID_NULL, GFP_KERNEL);
+    length =
+        security_context_to_sid_with_policy(backup_sepolicy, tcon, tconlen, &tsid, SECSID_NULL, GFP_KERNEL, NULL, NULL);
     if (length) {
         goto out;
-    } else {
-        // sync to global sidtab
-        security_context_to_sid(tcon, tconlen, &tmp, GFP_KERNEL);
     }
 
     security_compute_av_user_with_policy(backup_sepolicy, ssid, tsid, tclass, &avd);
-#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
-    length = security_context_to_sid(&fake_state, scon, sconlen, &ssid, GFP_KERNEL);
-    if (length) {
-        goto out;
-    } else {
-        // sync to global sidtab
-        security_context_to_sid(&selinux_state, scon, sconlen, &tmp, GFP_KERNEL);
-    }
-
-    length = security_context_to_sid(&fake_state, tcon, tconlen, &tsid, GFP_KERNEL);
-    if (length) {
-        goto out;
-    } else {
-        // sync to global sidtab
-        security_context_to_sid(&selinux_state, tcon, tconlen, &tmp, GFP_KERNEL);
-    }
-
-    security_compute_av_user(&fake_state, ssid, tsid, tclass, &avd);
-#else
-    length = ksu_security_context_str_to_sid(scon, &ssid, GFP_KERNEL);
-    if (length) {
-        goto out;
-    } else {
-        // sync to global sidtab
-        ksu_security_context_to_sid(scon, size, &tmp, GFP_KERNEL);
-    }
-
-    length = ksu_security_context_str_to_sid(tcon, &tsid, GFP_KERNEL);
-    if (length) {
-        goto out;
-    } else {
-        // sync to global sidtab
-        ksu_security_context_to_sid(tcon, size, &tmp, GFP_KERNEL);
-    }
-
-    ksu_security_compute_av_user(ssid, tsid, tclass, &avd);
-#endif
 
     // stock reads 1; a loader load_policy may have bumped the backup before we load
     avd.seqno = 1;
@@ -324,379 +165,187 @@ out:
     return length;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) && !defined(KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE)
-struct ksu_lsm_hook selinux_setprocattr_hook =
-    KSU_LSM_HOOK_INIT(setprocattr, "selinux_setprocattr", ksu_handle_selinux_setprocattr, 0);
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0) &&                                                                   \
-    (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0) || defined(KSU_COMPAT_HAS_LIST_OF_LSM_HOOKS))
-static setprocattr_fn ksu_orig_setprocattr;
-uintptr_t selinux_setprocattr_hook_ptr = 0;
-#else
-extern setprocattr_fn ksu_orig_setprocattr;
-#endif
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0) || defined(KSU_COMPAT_SETPROCATTR_USE_NEW_PROTOTYPE)
-int __nocfi ksu_handle_selinux_setprocattr(const char *name, void *value, size_t size)
-#else
-int __nocfi ksu_handle_selinux_setprocattr(struct task_struct *p, char *name, void *value, size_t size)
-#endif
+/*
+ * get the security ID of a set of credentials
+ */
+static inline u32 cred_sid(const struct cred *cred)
 {
-    int error;
-    u32 mysid, sid, tmp;
+    const struct ksu_task_security_struct *tsec;
+
+    tsec = selinux_cred(cred);
+    return tsec->sid;
+}
+
+/*
+ * get the objective security ID of a task
+ */
+static inline u32 task_sid_obj(const struct task_struct *task)
+{
+    u32 sid;
+
+    rcu_read_lock();
+    sid = cred_sid(__task_cred(task));
+    rcu_read_unlock();
+    return sid;
+}
+
+static u32 ptrace_parent_sid(void)
+{
+    u32 sid = 0;
+    struct task_struct *tracer;
+
+    rcu_read_lock();
+    tracer = ptrace_parent(current);
+    if (tracer)
+        sid = task_sid_obj(tracer);
+    rcu_read_unlock();
+
+    return sid;
+}
+
+int my_setprocattr(const char *name, void *value, size_t size)
+{
+    struct ksu_task_security_struct *tsec;
+    struct cred *new;
+    u32 mysid = current_sid(), sid = 0, tmp_sid, ptsid;
+    int error, error2;
     char *str = value;
-    if (likely(ksu_get_uid_t(current_uid()) < 10000)) {
-        goto call_orig;
-    }
 
-    if (strcmp(name, "current")) {
-        goto call_orig;
-    }
-    mysid = current_sid();
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-    error = avc_has_perm(mysid, mysid, SECCLASS_PROCESS, PROCESS__SETCURRENT, NULL);
-#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
-    error = avc_has_perm(&selinux_state, mysid, mysid, SECCLASS_PROCESS, PROCESS__SETCURRENT, NULL);
-#else
-    error = avc_has_perm(mysid, mysid, SECCLASS_PROCESS, PROCESS__SETCURRENT, NULL);
-#endif
-    if (error) {
+    error = ksu_avc_has_perm_compat(mysid, mysid, SECCLASS_PROCESS, PROCESS__SETCURRENT, NULL);
+    if (error)
         return error;
-    }
 
+    /* Obtain a SID for the context, if one was specified. */
     if (size && str[0] && str[0] != '\n') {
         if (str[size - 1] == '\n') {
             str[size - 1] = 0;
             size--;
         }
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-        error = security_context_to_sid_with_policy(backup_sepolicy, str, size, &sid, SECSID_NULL, GFP_KERNEL);
-#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
-        error = security_context_to_sid(&fake_state, str, size, &sid, GFP_KERNEL);
-#else
-        error = ksu_security_context_to_sid(str, size, &sid, GFP_KERNEL);
-#endif
-        if (error) {
-            return error;
-        } else {
-            // sync to global sidtab
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-            security_context_to_sid(str, size, &tmp, GFP_KERNEL);
-#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
-            security_context_to_sid(&selinux_state, str, size, &tmp, GFP_KERNEL);
-#else
-            ksu_security_context_to_sid(str, size, &tmp, GFP_KERNEL);
-#endif
-        }
+        error2 = security_context_to_sid_with_policy(backup_sepolicy, value, size, &tmp_sid, SECSID_NULL, GFP_KERNEL,
+                                                     &sid, &error);
+        if (error2 || error)
+            return error2 ?: error;
     }
 
-call_orig:
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-    return ((setprocattr_fn)selinux_setprocattr_hook.original)(name, value, size);
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0) || defined(KSU_COMPAT_SETPROCATTR_USE_NEW_PROTOTYPE)
-    return ksu_orig_setprocattr(name, value, size);
-#else
-    return ksu_orig_setprocattr(p, name, value, size);
-#endif
+    new = prepare_creds();
+    if (!new)
+        return -ENOMEM;
+
+    /* Permission checking based on the specified context is
+	   performed during the actual operation (execve,
+	   open/mkdir/...), when we know the full context of the
+	   operation.  See selinux_bprm_creds_for_exec for the execve
+	   checks and may_create for the file creation checks. The
+	   operation will then fail if the context is not permitted. */
+    tsec = selinux_cred(new);
+    error = -EINVAL;
+    if (sid == 0)
+        goto abort_change;
+
+    if (!current_is_single_threaded()) {
+        error = ksu_security_bounded_transition_compat(tsec->sid, sid);
+        if (error)
+            goto abort_change;
+    }
+
+    /* Check permissions for the transition. */
+    error = ksu_avc_has_perm_compat(tsec->sid, sid, SECCLASS_PROCESS, PROCESS__DYNTRANSITION, NULL);
+    if (error)
+        goto abort_change;
+
+    /* Check for ptracing, and update the task SID if ok.
+        Otherwise, leave SID unchanged and fail. */
+    ptsid = ptrace_parent_sid();
+    if (ptsid != 0) {
+        error = ksu_avc_has_perm_compat(ptsid, sid, SECCLASS_PROCESS, PROCESS__PTRACE, NULL);
+        if (error)
+            goto abort_change;
+    }
+
+    tsec->sid = sid;
+
+    commit_creds(new);
+    return size;
+
+abort_change:
+    abort_creds(new);
+    return error;
 }
 
-typedef int (*sel_open_handle_status_fn)(struct inode *inode, struct file *filp);
-static sel_open_handle_status_fn orig_sel_open_handle_status, *sel_open_handle_status_slot;
-static int my_sel_open_handle_status(struct inode *inode, struct file *filp)
-{
-    if (likely(ksu_get_uid_t(current_uid()) >= 10000 && ksu_selinux_hide_enabled)) {
-        void *data;
-        mutex_lock(ksu_selinux_status_lock);
-        data = fake_status;
-        mutex_unlock(ksu_selinux_status_lock);
-        if (data) {
-            filp->private_data = data;
-            return 0;
-        }
-    }
-
-    int ret = orig_sel_open_handle_status(inode, filp);
 #ifdef KSU_COMPAT_USE_STATIC_KEY
-    if (static_branch_unlikely(&fake_status_initialize_key) && !ret && !fake_status) {
-        initialize_fake_status();
-    }
+DEFINE_STATIC_KEY_FALSE(fake_status_initialize_key);
 #else
-    if (!fake_status_initialize_key && !ret && !fake_status) {
-        initialize_fake_status();
-    }
+bool fake_status_initialize_key __read_mostly = false;
 #endif
-    return ret;
-}
+struct page *fake_status = NULL;
 
-static void hook_selinux_status_open()
+void initialize_fake_status()
 {
-    if (orig_sel_open_handle_status)
-        return;
-    if (!sel_open_handle_status_slot) {
-#ifdef CONFIG_KALLSYMS_ALL
-        struct file_operations *ops = (struct file_operations *)find_kernel_symbol_exact("sel_handle_status_ops");
-#else
-        extern struct file_operations sel_handle_status_ops;
-        struct file_operations *ops = &sel_handle_status_ops;
-#endif
-        if (!ops) {
-            pr_err("selinux_hide: sel_handle_status_ops not found, fake status will not work\n");
-            return;
-        }
-        sel_open_handle_status_slot = &ops->open;
+    mutex_lock(&selinux_state.status_lock);
+    if (fake_status)
+        goto out;
+    if (!selinux_state.status_page) {
+        pr_warn("initialize_fake_status: status_page not exist\n");
+        goto out;
     }
-    sel_open_handle_status_fn new_fn = my_sel_open_handle_status;
-    orig_sel_open_handle_status = *sel_open_handle_status_slot;
-    int ret = ksu_patch_text(sel_open_handle_status_slot, &new_fn, sizeof(new_fn), KSU_PATCH_TEXT_FLUSH_DCACHE);
-    if (ret) {
-        pr_err("selinux_hide: init: patch_text sel_open_handle_status err: %d\n", ret);
-        sel_open_handle_status_slot = NULL;
-        orig_sel_open_handle_status = NULL;
+
+    struct selinux_kernel_status *status = page_address(selinux_state.status_page);
+    if (!status->enforcing) {
+        pr_warn("initialize_fake_status: skip not enforcing\n");
+        goto out;
     }
+
+    struct page *new_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
+    if (!new_page) {
+        pr_err("initialize_fake_status: failed to allocate page\n");
+        goto out;
+    }
+
+    struct selinux_kernel_status *new_status = page_address(new_page);
+    memcpy(new_status, status, sizeof(*status));
+
+    fake_status = new_page;
+    pr_info("initialize_fake_status initialized: sequence=%d, policyload=%d, enforcing=%d\n", new_status->sequence,
+            new_status->policyload, new_status->enforcing);
+
+out:
+    mutex_unlock(&selinux_state.status_lock);
 }
 
-extern void ksu_unregister_setprocattr_lsm_hook();
-
-static void ksu_selinux_hide_unhook()
+void ksu_selinux_hide_handle_second_stage()
 {
-    int ret;
-    if (orig_context_write) {
-        ret =
-            ksu_patch_text(context_write, &orig_context_write, sizeof(orig_context_write), KSU_PATCH_TEXT_FLUSH_DCACHE);
-        orig_context_write = NULL;
-        if (ret) {
-            pr_err("selinux_hide: exit: patch_text context_write err: %d\n", ret);
-        }
-    }
-    if (orig_access_write) {
-        ret = ksu_patch_text(access_write, &orig_access_write, sizeof(orig_access_write), KSU_PATCH_TEXT_FLUSH_DCACHE);
-        orig_access_write = NULL;
-        if (ret) {
-            pr_err("selinux_hide: exit: patch_text access_write err: %d\n", ret);
-        }
-    }
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-    ksu_lsm_unhook(&selinux_setprocattr_hook);
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0) || defined(KSU_COMPAT_HAS_LIST_OF_LSM_HOOKS)
-    if (ksu_orig_setprocattr) {
-        ret = ksu_patch_text((void *)selinux_setprocattr_hook_ptr, &ksu_orig_setprocattr, sizeof(ksu_orig_setprocattr),
-                             KSU_PATCH_TEXT_FLUSH_DCACHE);
-        ksu_orig_setprocattr = NULL;
-        if (ret) {
-            pr_err("selinux_hide: exit: patch_text setprocattr err: %d\n", ret);
-        }
-    }
+    initialize_fake_status();
+    // https://github.com/torvalds/linux/blame/e8c2f9fdadee7cbc75134dc463c1e0d856d6e5c7/security/selinux/selinuxfs.c#L2014
+    if (fake_status)
+#ifdef KSU_COMPAT_USE_STATIC_KEY
+        static_key_disable(&fake_status_initialize_key.key);
 #else
-    stop_machine(ksu_unregister_setprocattr_lsm_hook, NULL, NULL);
+        fake_status_initialize_key = false;
 #endif
+    else
+        pr_warn("selinux_hide: fake status need late initialization\n");
 }
 
-extern void ksu_register_setprocattr_lsm_hook();
+void ksu_selinux_hide_handle_post_fs_data()
+{
+#ifdef KSU_COMPAT_USE_STATIC_KEY
+        static_key_disable(&fake_status_initialize_key.key);
 #else
-#define ksu_selinux_hide_unhook()                                                                                      \
-    do {                                                                                                               \
-    } while (0)
-#endif // #ifndef KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE
+        fake_status_initialize_key = false;
+#endif
+    if (!fake_status)
+        pr_err("selinux_hide: fake status is not initialized after post-fs-data!\n");
+}
 
 static int ksu_selinux_hide_enable()
 {
-    int ret;
     pr_info("selinux_hide: init selinux hide\n");
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(KSU_COMPAT_HAS_SELINUX_POLICY_STRUCT)
     if (!backup_sepolicy) {
         pr_err("no backup sepolicy available, please save feature and reboot to retry!\n");
         return -EAGAIN;
     }
-#else
-    if (!backup_policydb) {
-        pr_err("no backup policydb available, please save feature and reboot to retry!\n");
-        return -EAGAIN;
-    }
-
-    if (!backup_sidtab) {
-        pr_err("no backup sidtab available, please save feature and reboot to retry!\n");
-        return -EAGAIN;
-    }
-#endif
-
-#ifndef KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE
-    hook_selinux_status_open();
-#endif
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-
-#ifdef CONFIG_KALLSYMS_ALL
-    security_dump_masked_av_fn = find_kernel_symbol_exact("security_dump_masked_av");
-    if (!security_dump_masked_av_fn) {
-        pr_warn("security_dump_masked_av not found!\n");
-    }
-    context_struct_compute_av_fn = find_kernel_symbol_exact("context_struct_compute_av");
-    if (!context_struct_compute_av_fn) {
-        pr_warn("context_struct_compute_av not found!\n");
-    }
-#else
-    extern void security_dump_masked_av(struct policydb * policydb, struct context * scontext,
-                                        struct context * tcontext, u16 tclass, u32 permissions, const char *reason);
-    extern void context_struct_compute_av(struct policydb * policydb, struct context * scontext,
-                                          struct context * tcontext, u16 tclass, struct av_decision * avd,
-                                          struct extended_perms * xperms);
-
-    security_dump_masked_av_fn = &security_dump_masked_av;
-    if (!security_dump_masked_av_fn) {
-        pr_warn("security_dump_masked_av not found!\n");
-    }
-
-    context_struct_compute_av_fn = &context_struct_compute_av;
-    if (!context_struct_compute_av_fn) {
-        pr_warn("context_struct_compute_av not found!\n");
-    }
-#endif
-
-#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
-    fake_state.initialized = true;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(KSU_COMPAT_HAS_SELINUX_POLICY_STRUCT)
-    fake_state.policy = backup_sepolicy;
-#else
-    fake_state.ss = kzalloc(sizeof(*fake_state.ss), GFP_KERNEL);
-    if (!fake_state.ss) {
-        pr_err("selinux_hide: failed alloc selinux_ss!\n");
-        return -ENOMEM;
-    }
-
-    rwlock_init(&fake_state.ss->policy_rwlock);
-
-    // In normal android
-    // Only set selinux policy once
-    // So let's just hardcode to 1 to avoid avdSeqNo detect
-    //
-    // We manually reset latest_granting to 1, or will cause we may put an abnormal latest_granting to avdSeqNoeqNo
-    // Because there will be called in any time, and i am too lazy move it to before apply_kernelsu_rules :)
-    fake_state.ss->latest_granting = 1;
-
-    // Replace policydb/sidtab with ourselves
-    memcpy(&fake_state.ss->policydb, backup_policydb, sizeof(struct policydb));
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0) || defined(KSU_COMPAT_SIDTAB_AS_REFERENCE)
-    fake_state.ss->sidtab = backup_sidtab;
-#else
-    memcpy(&fake_state.ss->sidtab, backup_sidtab, sizeof(struct sidtab));
-    kfree(backup_sidtab);
-    backup_sidtab = NULL;
-#endif
-    kfree(backup_policydb);
-
-    backup_policydb = NULL;
-#endif // #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(KSU_COMPAT_HAS_SELINUX_POLICY_STRUCT)
-
-#endif // #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-
-#ifndef KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE
-#ifdef CONFIG_KALLSYMS_ALL
-    selinux_write_op = (write_op_fn *)find_kernel_symbol_exact("write_op");
-#else
-    extern ssize_t (*const write_op[])(struct file *, char *, size_t);
-
-    selinux_write_op = (write_op_fn *)&write_op;
-#endif
-    if (!selinux_write_op) {
-        pr_err("selinux_hide: no write_op found!\n");
-        return -ENOSYS;
-    }
-
-    context_write = &selinux_write_op[SEL_CONTEXT];
-    pr_info("selinux_hide: context_write: 0x%lx [%pSb]\n", (unsigned long)*context_write, *context_write);
-    write_op_fn my = my_write_context;
-    orig_context_write = *context_write;
-    ret = ksu_patch_text(context_write, &my, sizeof(my), KSU_PATCH_TEXT_FLUSH_DCACHE);
-    if (ret) {
-        pr_err("selinux_hide: init: patch_text context_write err: %d\n", ret);
-        goto unhook;
-    }
-
-    access_write = &selinux_write_op[SEL_ACCESS];
-    pr_info("selinux_hide: access_write: 0x%lx [%pSb]\n", (unsigned long)*access_write, *access_write);
-    my = my_write_access;
-    orig_access_write = *access_write;
-    ret = ksu_patch_text(access_write, &my, sizeof(my), KSU_PATCH_TEXT_FLUSH_DCACHE);
-    if (ret) {
-        pr_err("selinux_hide: init: patch_text access_write err: %d\n", ret);
-        goto unhook;
-    }
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-    ret = ksu_lsm_hook(&selinux_setprocattr_hook);
-    if (ret) {
-        pr_err("selinux_hide: init: selinux_setprocattr_hook err: %d\n", ret);
-        goto unhook;
-    }
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0) || defined(KSU_COMPAT_HAS_LIST_OF_LSM_HOOKS)
-    struct security_hook_list *hp;
-
-    // https://github.com/torvalds/linux/commit/df0ce17331e2501dbffc060041dfc6c5f85227b5
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) || defined(KSU_COMPAT_HLIST_FOR_SECURITY_HOOK_LIST)
-#define ksu_for_each_lsm_entry hlist_for_each_entry
-#else
-#define ksu_for_each_lsm_entry list_for_each_entry
-#endif
-
-    ksu_for_each_lsm_entry(hp, &security_hook_heads.setprocattr, list)
-    {
-        // https://github.com/torvalds/linux/commit/d69dece5f5b6bc7a5e39d2b6136ddc69469331fe
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0) || defined(KSU_COMPAT_REQUIRE_PROVIDE_LSM_NAME)
-        // when we are in 4.11+, we can ensure we are control "selinux" LSM by that
-        if (strcmp("selinux", hp->lsm))
-            continue;
-#endif // #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
-        selinux_setprocattr_hook_ptr = (unsigned long)&hp->hook.setprocattr;
-        ksu_orig_setprocattr = hp->hook.setprocattr;
-        setprocattr_fn my_setprocattr = ksu_handle_selinux_setprocattr;
-        ret =
-            ksu_patch_text(&hp->hook.setprocattr, &my_setprocattr, sizeof(my_setprocattr), KSU_PATCH_TEXT_FLUSH_DCACHE);
-        if (ret) {
-            pr_err("selinux_hide: init: patch_text selinux setprocattr err: %d\n", ret);
-            goto unhook;
-        }
-        goto out;
-    }
-
-#undef ksu_for_each_lsm_entry
-out:
-#else
-    // for 4.2-, We handle it in lsm_hooks.c
-
-    stop_machine(ksu_register_setprocattr_lsm_hook, NULL, NULL);
-#endif // #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
-
-#endif // #ifndef KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE
 
     return 0;
-
-#ifndef KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE
-unhook:
-#endif
-    ksu_selinux_hide_unhook();
-    return -ENOSYS;
-}
-
-static void ksu_selinux_hide_disable()
-{
-    pr_info("selinux_hide: exit selinux hide\n");
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0) && defined(KSU_COMPAT_USE_SELINUX_STATE) &&                          \
-    !defined(KSU_COMPAT_HAS_SELINUX_POLICY_STRUCT)
-    backup_policydb = kzalloc(sizeof(*backup_policydb), GFP_KERNEL);
-    memcpy(backup_policydb, &fake_state.ss->policydb, sizeof(struct policydb));
-
-    // 5.0+ backup_sidtab share memory with fake_state, so we doesn't replace to NULL in lifetime
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0) && !defined(KSU_COMPAT_SIDTAB_AS_REFERENCE)
-    backup_sidtab = kzalloc(sizeof(*backup_sidtab), GFP_KERNEL);
-    memcpy(backup_sidtab, &fake_state.ss->sidtab, sizeof(struct sidtab));
-#endif
-
-#endif
-
-    ksu_selinux_hide_unhook();
 }
 
 static int selinux_hide_feature_get(u64 *value)
@@ -721,10 +370,11 @@ static int selinux_hide_feature_set(u64 value)
         }
     } else {
         if (ksu_selinux_hide_running) {
-            ksu_selinux_hide_disable();
             ksu_selinux_hide_running = false;
         }
     }
+    pr_info("selinux_hide: ksu_selinux_hide_enabled: %d, ksu_selinux_hide_running: %d\n",
+            ksu_selinux_hide_enabled, ksu_selinux_hide_running);
     mutex_unlock(&selinux_hide_mutex);
     return ret;
 }
@@ -736,72 +386,32 @@ static const struct ksu_feature_handler selinux_hide_handler = {
     .set_handler = selinux_hide_feature_set,
 };
 
-void ksu_selinux_hide_handle_second_stage()
-{
-    initialize_fake_status();
-    // https://github.com/torvalds/linux/blame/e8c2f9fdadee7cbc75134dc463c1e0d856d6e5c7/security/selinux/selinuxfs.c#L2014
-    if (fake_status) {
-#ifdef KSU_COMPAT_USE_STATIC_KEY
-        static_key_disable(&fake_status_initialize_key.key);
-#else
-        fake_status_initialize_key = true;
-#endif
-    } else {
-        pr_warn("selinux_hide: fake status need late initialization\n");
-    }
-}
-
-void ksu_selinux_hide_handle_post_fs_data()
-{
-#ifdef KSU_COMPAT_USE_STATIC_KEY
-    static_key_disable(&fake_status_initialize_key.key);
-#else
-    fake_status_initialize_key = true;
-#endif
-    if (!fake_status) {
-        pr_err("selinux_hide: fake status is not initialized after post-fs-data!\n");
-    }
-}
-
 void __init ksu_selinux_hide_init()
 {
     if (ksu_register_feature_handler(&selinux_hide_handler)) {
         pr_err("Failed to register selinux_hide feature handler\n");
     }
-    if (ksu_late_loaded) {
-        initialize_fake_status();
-    } else {
-#ifdef KSU_COMPAT_USE_STATIC_KEY
-        static_key_enable(&fake_status_initialize_key.key);
-#else
-        fake_status_initialize_key = false;
-#endif
-    }
-#ifndef KSU_COMPAT_HAS_SUSFS_FEATURE_SELINUX_HIDE
-    hook_selinux_status_open();
-#endif
+    static_key_enable(&fake_status_initialize_key.key);
 }
 
 void __exit ksu_selinux_hide_exit()
 {
     mutex_lock(&selinux_hide_mutex);
     if (ksu_selinux_hide_running) {
-        ksu_selinux_hide_disable();
         ksu_selinux_hide_running = false;
     }
     mutex_unlock(&selinux_hide_mutex);
     ksu_unregister_feature_handler(KSU_FEATURE_SELINUX_HIDE);
-    mutex_lock(ksu_selinux_status_lock);
+    mutex_lock(&selinux_state.status_lock);
     if (fake_status)
         __free_page(fake_status);
     fake_status = NULL;
-    mutex_unlock(ksu_selinux_status_lock);
+    mutex_unlock(&selinux_state.status_lock);
 }
 
 void ksu_selinux_hide_drop_backup_if_unused()
 {
     mutex_lock(&selinux_hide_mutex);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(KSU_COMPAT_HAS_SELINUX_POLICY_STRUCT)
     if (!ksu_selinux_hide_running && backup_sepolicy) {
         pr_info("selinux_hide is not enabled - drop backup_sepolicy\n");
         sidtab_destroy(backup_sepolicy->sidtab);
@@ -809,128 +419,28 @@ void ksu_selinux_hide_drop_backup_if_unused()
         ksu_destroy_sepolicy(backup_sepolicy);
         backup_sepolicy = NULL;
     }
-#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
-    if (!ksu_selinux_hide_running && backup_policydb && backup_sidtab) {
-        pr_info("selinux_hide is not enabled - drop backup_policydb\n");
-        sidtab_destroy(backup_sidtab);
-        kfree(backup_sidtab);
-        ksu_destroy_policydb(backup_policydb);
-        kfree(backup_policydb);
-        backup_policydb = NULL;
-        backup_sidtab = NULL;
-    }
-#else
-    if (!ksu_selinux_hide_running && backup_policydb && backup_sidtab) {
-        sidtab_destroy(backup_sidtab);
-        kfree(backup_sidtab);
-        ksu_destroy_policydb(backup_policydb);
-        kfree(backup_policydb);
-        backup_policydb = NULL;
-        backup_sidtab = NULL;
-    }
-#endif
     mutex_unlock(&selinux_hide_mutex);
 }
 
-// for susfs xN
-__maybe_static void initialize_fake_status()
-{
-    // https://github.com/torvalds/linux/commit/4b36cb773a8153417a080f8025d522322f915aea
-#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 7, 0) || defined(KSU_COMPAT_SELINUX_STATUS_VAR_IN_SELINUX_STATE)
-    ksu_selinux_status_lock = &selinux_state.status_lock;
-#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
-    ksu_selinux_status_lock = &selinux_state.ss->status_lock;
-#elif defined(CONFIG_KALLSYMS_ALL)
-    // call ksu_resolve_symbol_for_functable_hook to search selinux_status_lock
-    // because some compiler add suffix for that
-    // e.g:
-    // 0000000000000000 b selinux_status_lock.llvm.9985633631847037644
-    ksu_selinux_status_lock = (struct mutex *)ksu_resolve_symbol_for_functable_hook("selinux_status_lock");
-#else
-    extern struct mutex selinux_status_lock;
-    ksu_selinux_status_lock = &selinux_status_lock;
-#endif
-
-    mutex_lock(ksu_selinux_status_lock);
-    if (fake_status)
-        goto out;
-
-#if LINUX_VERSION_CODE > KERNEL_VERSION(5, 7, 0) || defined(KSU_COMPAT_SELINUX_STATUS_VAR_IN_SELINUX_STATE)
-    struct page *selinux_status_page = selinux_state.status_page;
-#elif defined(KSU_COMPAT_USE_SELINUX_STATE)
-    struct page *selinux_status_page = selinux_state.ss->status_page;
-#elif defined(CONFIG_KALLSYMS_ALL)
-    // call ksu_resolve_symbol_for_functable_hook to search selinux_status_page
-    // because some compiler add suffix for that
-    // e.g:
-    // 0000000000000000 b selinux_status_page.llvm.9985633631847037644
-    struct page *selinux_status_page = *((struct page **)ksu_resolve_symbol_for_functable_hook("selinux_status_page"));
-#else
-    extern struct page *selinux_status_page;
-#endif
-
-    if (!selinux_status_page) {
-        pr_warn("initialize_fake_status: status_page not exist\n");
-        goto out;
-    }
-
-    struct selinux_kernel_status *status = page_address(selinux_status_page);
-    if (!status->enforcing && !ksu_late_loaded) {
-        pr_warn("initialize_fake_status: skip not enforcing\n");
-        goto out;
-    }
-
-    struct page *new_page = alloc_page(GFP_KERNEL | __GFP_ZERO);
-    if (!new_page) {
-        pr_err("initialize_fake_status: failed to allocate page\n");
-        goto out;
-    }
-
-    struct selinux_kernel_status *new_status = page_address(new_page);
-    memcpy(new_status, status, sizeof(*status));
-    if (ksu_late_loaded) {
-        // In late_load mode the loader may have reloaded sepolicy before us,
-        // so the captured page is not stock. Serve what a stock boot ends
-        // with instead: creation sentinel below 6.10, one load plus one
-        // setenforce above.
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
-        new_status->sequence = 4;
-        new_status->policyload = 1;
-#else
-        new_status->sequence = 0;
-        new_status->policyload = 0;
-#endif
-        if (!new_status->enforcing) {
-            new_status->enforcing = 1;
-        }
-    }
-
-    fake_status = new_page;
-    pr_info("initialize_fake_status initialized: sequence=%d, policyload=%d, enforcing=%d\n", new_status->sequence,
-            new_status->policyload, new_status->enforcing);
-
-out:
-    mutex_unlock(ksu_selinux_status_lock);
-}
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
 /*
  * Caveat:  Mutates scontext.
  */
-static int string_to_context_struct(struct policydb *pol, struct sidtab *sidtabp, char *scontext, struct context *ctx,
-                                    u32 def_sid)
+static int string_to_context_struct(struct policydb *pol, struct policydb *orig_pol, struct sidtab *sidtabp,
+                                    struct sidtab *orig_sidtabp, char *scontext, const char *source, u32 source_len,
+                                    struct context *ctx, struct context *orig_ctx, u32 def_sid, int *orig_rc_p)
 {
-    struct role_datum *role;
-    struct type_datum *typdatum;
-    struct user_datum *usrdatum;
+    struct role_datum *role, *orig_role;
+    struct type_datum *typdatum, *orig_typdatum;
+    struct user_datum *usrdatum, *orig_usrdatum;
     char *scontextp, *p, oldc;
-    int rc = 0;
+    bool orig_valid = true;
+    int rc = -EINVAL, orig_rc = -EINVAL;
 
     context_init(ctx);
+    context_init(orig_ctx);
 
-    /* Parse the security context. */
-
-    rc = -EINVAL;
+    // split fields once
+    // look up both policies
     scontextp = scontext;
 
     /* Extract the user. */
@@ -944,10 +454,15 @@ static int string_to_context_struct(struct policydb *pol, struct sidtab *sidtabp
     *p++ = 0;
 
     usrdatum = symtab_search(&pol->p_users, scontextp);
+    orig_usrdatum = symtab_search(&orig_pol->p_users, scontextp);
     if (!usrdatum)
         goto out;
 
     ctx->user = usrdatum->value;
+    if (orig_usrdatum)
+        orig_ctx->user = orig_usrdatum->value;
+    else
+        orig_valid = false;
 
     /* Extract role. */
     scontextp = p;
@@ -960,9 +475,14 @@ static int string_to_context_struct(struct policydb *pol, struct sidtab *sidtabp
     *p++ = 0;
 
     role = symtab_search(&pol->p_roles, scontextp);
+    orig_role = symtab_search(&orig_pol->p_roles, scontextp);
     if (!role)
         goto out;
     ctx->role = role->value;
+    if (orig_role)
+        orig_ctx->role = orig_role->value;
+    else
+        orig_valid = false;
 
     /* Extract type. */
     scontextp = p;
@@ -972,35 +492,55 @@ static int string_to_context_struct(struct policydb *pol, struct sidtab *sidtabp
     *p++ = 0;
 
     typdatum = symtab_search(&pol->p_types, scontextp);
+    orig_typdatum = symtab_search(&orig_pol->p_types, scontextp);
     if (!typdatum || typdatum->attribute)
         goto out;
 
     ctx->type = typdatum->value;
+    if (orig_typdatum && !orig_typdatum->attribute)
+        orig_ctx->type = orig_typdatum->value;
+    else
+        orig_valid = false;
 
     rc = mls_context_to_sid(pol, oldc, p, ctx, sidtabp, def_sid);
-    if (rc)
-        goto out;
+    if (orig_valid) {
+        if (oldc) {
+            size_t offset = p - scontext;
 
-    /* Check the validity of the new context. */
-    rc = -EINVAL;
-    if (!policydb_context_isvalid(pol, ctx))
-        goto out;
-    rc = 0;
+            // restore MLS suffix for live policy
+            memcpy(p, source + offset, source_len - offset);
+            p[source_len - offset] = '\0';
+        }
+        // validate live context with live policy
+        orig_rc = mls_context_to_sid(orig_pol, oldc, p, orig_ctx, orig_sidtabp, def_sid);
+        if (!orig_rc && !policydb_context_isvalid(orig_pol, orig_ctx))
+            orig_rc = -EINVAL;
+    }
+
+    if (!rc && !policydb_context_isvalid(pol, ctx))
+        rc = -EINVAL;
 out:
-    if (rc)
+    if (rc) {
         context_destroy(ctx);
+        // ignore live result if backup fails
+        orig_rc = -EINVAL;
+    }
+    if (rc || orig_rc)
+        context_destroy(orig_ctx);
+    *orig_rc_p = orig_rc;
     return rc;
 }
 
-// remove static in susfs
-__maybe_static int security_context_to_sid_with_policy(struct selinux_policy *policy, const char *scontext,
-                                                       u32 scontext_len, u32 *sid, u32 def_sid, gfp_t gfp_flags)
+static int security_context_to_sid_with_policy(struct selinux_policy *policy, const char *scontext, u32 scontext_len,
+                                               u32 *sid, u32 def_sid, gfp_t gfp_flags, u32 *orig_sid_p, int *orig_rc_p)
 {
-    struct policydb *policydb;
-    struct sidtab *sidtab;
-    char *scontext2, *str = NULL;
-    struct context context;
-    int rc = 0;
+    struct selinux_policy *orig_policy;
+    struct policydb *policydb, *orig_policydb;
+    struct sidtab *sidtab, *orig_sidtab;
+    char *scontext2;
+    struct context context, orig_context;
+    int rc = 0, orig_rc = -EINVAL;
+    u32 orig_sid;
 
     /* An empty security context is never valid. */
     if (!scontext_len)
@@ -1013,23 +553,57 @@ __maybe_static int security_context_to_sid_with_policy(struct selinux_policy *po
 
     // removed: if (!selinux_initialized())
     *sid = SECSID_NULL;
+    if (orig_sid_p)
+        *orig_sid_p = SECSID_NULL;
 
     // removed: if (force)
-    // removed: rcu lock
+retry:
+    rcu_read_lock();
     policydb = &policy->policydb;
     sidtab = policy->sidtab;
-    rc = string_to_context_struct(policydb, sidtab, scontext2, &context, def_sid);
+    orig_policy = rcu_dereference(selinux_state.policy);
+    orig_policydb = &orig_policy->policydb;
+    orig_sidtab = orig_policy->sidtab;
+
+    // parse both policies together
+    orig_rc = -EINVAL;
+    rc = string_to_context_struct(policydb, orig_policydb, sidtab, orig_sidtab, scontext2, scontext, scontext_len,
+                                  &context, &orig_context, def_sid, &orig_rc);
     if (rc)
-        goto out;
+        goto out_unlock;
+
+    // update backup sidtab first
     rc = sidtab_context_to_sid(sidtab, &context, sid);
-    // rc should not be frozen
-    if (rc)
-        goto out;
-    // removed: if (rc == -ESTALE)
     context_destroy(&context);
-out:
+    if (rc) {
+        if (!orig_rc)
+            context_destroy(&orig_context);
+        // backup sidtab is not reloaded
+        orig_rc = rc;
+        goto out_unlock;
+    }
+
+    if (orig_rc)
+        goto out_unlock;
+
+    // only sync valid contexts
+    // sync to live sidtab
+    orig_rc = sidtab_context_to_sid(orig_sidtab, &orig_context, &orig_sid);
+    context_destroy(&orig_context);
+    if (!orig_rc && orig_sid_p)
+        *orig_sid_p = orig_sid;
+    if (orig_rc == -ESTALE) {
+        // retry after live policy reload
+        rcu_read_unlock();
+        memcpy(scontext2, scontext, scontext_len);
+        scontext2[scontext_len] = '\0';
+        goto retry;
+    }
+out_unlock:
+    rcu_read_unlock();
+    if (orig_rc_p)
+        *orig_rc_p = orig_rc;
     kfree(scontext2);
-    kfree(str);
     return rc;
 }
 
@@ -1100,9 +674,8 @@ static int sidtab_entry_to_string(struct policydb *p, struct sidtab *sidtab, str
     return rc;
 }
 
-// remove static in susfs
-__maybe_static int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid, char **scontext,
-                                                       u32 *scontext_len)
+static int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid, char **scontext,
+                                               u32 *scontext_len)
 {
     struct policydb *policydb;
     struct sidtab *sidtab;
@@ -1474,9 +1047,8 @@ static void context_struct_compute_av(struct policydb *policydb, struct context 
     type_attribute_bounds_av(policydb, scontext, tcontext, tclass, avd);
 }
 
-// remove static in susfs
-__maybe_static void __nocfi security_compute_av_user_with_policy(struct selinux_policy *policy, u32 ssid, u32 tsid,
-                                                                 u16 tclass, struct av_decision *avd)
+static void __nocfi security_compute_av_user_with_policy(struct selinux_policy *policy, u32 ssid, u32 tsid, u16 tclass,
+                                                         struct av_decision *avd)
 {
     struct policydb *policydb;
     struct sidtab *sidtab;
@@ -1522,672 +1094,3 @@ allow:
     avd->allowed = 0xffffffff;
     goto out;
 }
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 17, 0) && !defined(KSU_COMPAT_USE_SELINUX_STATE)
-static int dump_masked_av_helper(void *k, void *d, void *args)
-{
-    struct perm_datum *pdatum = d;
-    char **permission_names = args;
-
-    BUG_ON(pdatum->value < 1 || pdatum->value > 32);
-
-    permission_names[pdatum->value - 1] = (char *)k;
-
-    return 0;
-}
-
-static void security_dump_masked_av(struct context *scontext, struct context *tcontext, u16 tclass, u32 permissions,
-                                    const char *reason)
-{
-    struct common_datum *common_dat;
-    struct class_datum *tclass_dat;
-    struct audit_buffer *ab;
-    char *tclass_name;
-    char *scontext_name = NULL;
-    char *tcontext_name = NULL;
-    char *permission_names[32];
-    int index;
-    u32 length;
-    bool need_comma = false;
-
-    if (!permissions)
-        return;
-
-    tclass_name = sym_name(backup_policydb, SYM_CLASSES, tclass - 1);
-    tclass_dat = backup_policydb->class_val_to_struct[tclass - 1];
-    common_dat = tclass_dat->comdatum;
-
-    /* init permission_names */
-    if (common_dat && hashtab_map(common_dat->permissions.table, dump_masked_av_helper, permission_names) < 0)
-        goto out;
-
-    if (hashtab_map(tclass_dat->permissions.table, dump_masked_av_helper, permission_names) < 0)
-        goto out;
-
-    /* get scontext/tcontext in text form */
-    if (context_struct_to_string(scontext, &scontext_name, &length) < 0)
-        goto out;
-
-    if (context_struct_to_string(tcontext, &tcontext_name, &length) < 0)
-        goto out;
-
-    /* audit a message */
-    ab = audit_log_start(current->audit_context, GFP_ATOMIC, AUDIT_SELINUX_ERR);
-    if (!ab)
-        goto out;
-
-    audit_log_format(ab,
-                     "op=security_compute_av reason=%s "
-                     "scontext=%s tcontext=%s tclass=%s perms=",
-                     reason, scontext_name, tcontext_name, tclass_name);
-
-    for (index = 0; index < 32; index++) {
-        u32 mask = (1 << index);
-
-        if ((mask & permissions) == 0)
-            continue;
-
-        audit_log_format(ab, "%s%s", need_comma ? "," : "", permission_names[index] ? permission_names[index] : "????");
-        need_comma = true;
-    }
-    audit_log_end(ab);
-out:
-    /* release scontext/tcontext */
-    kfree(tcontext_name);
-    kfree(scontext_name);
-
-    return;
-}
-
-static int constraint_expr_eval(struct context *scontext, struct context *tcontext, struct context *xcontext,
-                                struct constraint_expr *cexpr)
-{
-    u32 val1, val2;
-    struct context *c;
-    struct role_datum *r1, *r2;
-    struct mls_level *l1, *l2;
-    struct constraint_expr *e;
-    int s[CEXPR_MAXDEPTH];
-    int sp = -1;
-
-    for (e = cexpr; e; e = e->next) {
-        switch (e->expr_type) {
-        case CEXPR_NOT:
-            BUG_ON(sp < 0);
-            s[sp] = !s[sp];
-            break;
-        case CEXPR_AND:
-            BUG_ON(sp < 1);
-            sp--;
-            s[sp] &= s[sp + 1];
-            break;
-        case CEXPR_OR:
-            BUG_ON(sp < 1);
-            sp--;
-            s[sp] |= s[sp + 1];
-            break;
-        case CEXPR_ATTR:
-            if (sp == (CEXPR_MAXDEPTH - 1))
-                return 0;
-            switch (e->attr) {
-            case CEXPR_USER:
-                val1 = scontext->user;
-                val2 = tcontext->user;
-                break;
-            case CEXPR_TYPE:
-                val1 = scontext->type;
-                val2 = tcontext->type;
-                break;
-            case CEXPR_ROLE:
-                val1 = scontext->role;
-                val2 = tcontext->role;
-                r1 = backup_policydb->role_val_to_struct[val1 - 1];
-                r2 = backup_policydb->role_val_to_struct[val2 - 1];
-                switch (e->op) {
-                case CEXPR_DOM:
-                    s[++sp] = ebitmap_get_bit(&r1->dominates, val2 - 1);
-                    continue;
-                case CEXPR_DOMBY:
-                    s[++sp] = ebitmap_get_bit(&r2->dominates, val1 - 1);
-                    continue;
-                case CEXPR_INCOMP:
-                    s[++sp] =
-                        (!ebitmap_get_bit(&r1->dominates, val2 - 1) && !ebitmap_get_bit(&r2->dominates, val1 - 1));
-                    continue;
-                default:
-                    break;
-                }
-                break;
-            case CEXPR_L1L2:
-                l1 = &(scontext->range.level[0]);
-                l2 = &(tcontext->range.level[0]);
-                goto mls_ops;
-            case CEXPR_L1H2:
-                l1 = &(scontext->range.level[0]);
-                l2 = &(tcontext->range.level[1]);
-                goto mls_ops;
-            case CEXPR_H1L2:
-                l1 = &(scontext->range.level[1]);
-                l2 = &(tcontext->range.level[0]);
-                goto mls_ops;
-            case CEXPR_H1H2:
-                l1 = &(scontext->range.level[1]);
-                l2 = &(tcontext->range.level[1]);
-                goto mls_ops;
-            case CEXPR_L1H1:
-                l1 = &(scontext->range.level[0]);
-                l2 = &(scontext->range.level[1]);
-                goto mls_ops;
-            case CEXPR_L2H2:
-                l1 = &(tcontext->range.level[0]);
-                l2 = &(tcontext->range.level[1]);
-                goto mls_ops;
-            mls_ops:
-                switch (e->op) {
-                case CEXPR_EQ:
-                    s[++sp] = mls_level_eq(l1, l2);
-                    continue;
-                case CEXPR_NEQ:
-                    s[++sp] = !mls_level_eq(l1, l2);
-                    continue;
-                case CEXPR_DOM:
-                    s[++sp] = mls_level_dom(l1, l2);
-                    continue;
-                case CEXPR_DOMBY:
-                    s[++sp] = mls_level_dom(l2, l1);
-                    continue;
-                case CEXPR_INCOMP:
-                    s[++sp] = mls_level_incomp(l2, l1);
-                    continue;
-                default:
-                    BUG();
-                    return 0;
-                }
-                break;
-            default:
-                BUG();
-                return 0;
-            }
-
-            switch (e->op) {
-            case CEXPR_EQ:
-                s[++sp] = (val1 == val2);
-                break;
-            case CEXPR_NEQ:
-                s[++sp] = (val1 != val2);
-                break;
-            default:
-                BUG();
-                return 0;
-            }
-            break;
-        case CEXPR_NAMES:
-            if (sp == (CEXPR_MAXDEPTH - 1))
-                return 0;
-            c = scontext;
-            if (e->attr & CEXPR_TARGET)
-                c = tcontext;
-            else if (e->attr & CEXPR_XTARGET) {
-                c = xcontext;
-                if (!c) {
-                    BUG();
-                    return 0;
-                }
-            }
-            if (e->attr & CEXPR_USER)
-                val1 = c->user;
-            else if (e->attr & CEXPR_ROLE)
-                val1 = c->role;
-            else if (e->attr & CEXPR_TYPE)
-                val1 = c->type;
-            else {
-                BUG();
-                return 0;
-            }
-
-            switch (e->op) {
-            case CEXPR_EQ:
-                s[++sp] = ebitmap_get_bit(&e->names, val1 - 1);
-                break;
-            case CEXPR_NEQ:
-                s[++sp] = !ebitmap_get_bit(&e->names, val1 - 1);
-                break;
-            default:
-                BUG();
-                return 0;
-            }
-            break;
-        default:
-            BUG();
-            return 0;
-        }
-    }
-
-    BUG_ON(sp != 0);
-    return s[0];
-}
-
-static void type_attribute_bounds_av(struct context *scontext, struct context *tcontext, u16 tclass,
-                                     struct av_decision *avd)
-{
-    struct context lo_scontext;
-    struct context lo_tcontext, *tcontextp = tcontext;
-    struct av_decision lo_avd;
-    struct type_datum *source;
-    struct type_datum *target;
-    u32 masked = 0;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0) || defined(KSU_COMPAT_HAS_MODERN_POLICYDB)
-    // mostly never happen, except Huawei
-    source = backup_policydb->type_val_to_struct[scontext->type - 1];
-    BUG_ON(!source);
-
-    if (!source->bounds)
-        return;
-
-    target = backup_policydb->type_val_to_struct[tcontext->type - 1];
-    BUG_ON(!target);
-#else
-    source = flex_array_get_ptr(backup_policydb->type_val_to_struct_array, scontext->type - 1);
-    BUG_ON(!source);
-
-    if (!source->bounds)
-        return;
-
-    target = flex_array_get_ptr(backup_policydb->type_val_to_struct_array, tcontext->type - 1);
-    BUG_ON(!target);
-
-#endif
-
-    memset(&lo_avd, 0, sizeof(lo_avd));
-
-    memcpy(&lo_scontext, scontext, sizeof(lo_scontext));
-    lo_scontext.type = source->bounds;
-
-    if (target->bounds) {
-        memcpy(&lo_tcontext, tcontext, sizeof(lo_tcontext));
-        lo_tcontext.type = target->bounds;
-        tcontextp = &lo_tcontext;
-    }
-
-    context_struct_compute_av(&lo_scontext, tcontextp, tclass, &lo_avd, NULL);
-
-    masked = ~lo_avd.allowed & avd->allowed;
-
-    if (likely(!masked))
-        return; /* no masked permission */
-
-    /* mask violated permissions */
-    avd->allowed &= ~masked;
-
-    /* audit masked permissions */
-    security_dump_masked_av(scontext, tcontext, tclass, masked, "bounds");
-}
-
-static void avd_init(struct av_decision *avd)
-{
-    avd->allowed = 0;
-    avd->auditallow = 0;
-    avd->auditdeny = 0xffffffff;
-
-    // hardcode 1 to avoid detect for "avdSeqNo"
-    // Normal android only set selinux policy once,
-    // So there can be simple hardcode to 1
-    // For other kernel version
-    // kernel with selinux_policy backup real seqno before KernelSU apply rules
-    // kernel with selinux_state hardcode to 1 when userspace call selinux hide enable
-    avd->seqno = 1;
-    avd->flags = 0;
-}
-
-#ifndef KSU_COMPAT_HAS_CURRENT_SID
-/*
- * get the subjective security ID of the current task
- */
-static inline u32 current_sid(void)
-{
-    const struct task_security_struct *tsec = current_security();
-
-    return tsec->sid;
-}
-#endif
-
-/*
- * Compute access vectors and extended permissions based on a context
- * structure pair for the permissions in a particular class.
- */
-static void context_struct_compute_av(struct context *scontext, struct context *tcontext, u16 tclass,
-                                      struct av_decision *avd, struct extended_perms *xperms)
-{
-    struct constraint_node *constraint;
-    struct role_allow *ra;
-    struct avtab_key avkey;
-    struct avtab_node *node;
-    struct class_datum *tclass_datum;
-    struct ebitmap *sattr, *tattr;
-    struct ebitmap_node *snode, *tnode;
-    unsigned int i, j;
-
-    avd->allowed = 0;
-    avd->auditallow = 0;
-    avd->auditdeny = 0xffffffff;
-    if (xperms) {
-        memset(&xperms->drivers, 0, sizeof(xperms->drivers));
-        xperms->len = 0;
-    }
-
-    if (unlikely(!tclass || tclass > backup_policydb->p_classes.nprim)) {
-        if (printk_ratelimit())
-            printk(KERN_WARNING "SELinux:  Invalid class %hu\n", tclass);
-        return;
-    }
-
-    tclass_datum = backup_policydb->class_val_to_struct[tclass - 1];
-
-    /*
-	 * If a specific type enforcement rule was defined for
-	 * this permission check, then use it.
-	 */
-    avkey.target_class = tclass;
-    avkey.specified = AVTAB_AV | AVTAB_XPERMS;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 1, 0) ||                                                                   \
-    (defined(KSU_COMPAT_HAS_MODERN_POLICYDB) && !defined(KSU_COMPAT_TYPE_ATTR_MAP_ARRAY_NOT_FOUND))
-    // mostly never happen
-    sattr = &backup_policydb->type_attr_map_array[scontext->type - 1];
-    tattr = &backup_policydb->type_attr_map_array[tcontext->type - 1];
-#elif defined(KSU_COMPAT_TYPE_ATTR_MAP_ARRAY_NOT_FOUND)
-    // huawei! why rename??!
-    sattr = &backup_policydb->type_attr_map[scontext->type - 1];
-    tattr = &backup_policydb->type_attr_map[tcontext->type - 1];
-#else
-    sattr = flex_array_get(backup_policydb->type_attr_map_array, scontext->type - 1);
-    BUG_ON(!sattr);
-    tattr = flex_array_get(backup_policydb->type_attr_map_array, tcontext->type - 1);
-    BUG_ON(!tattr);
-#endif
-    ebitmap_for_each_positive_bit(sattr, snode, i)
-    {
-        ebitmap_for_each_positive_bit(tattr, tnode, j)
-        {
-            avkey.source_type = i + 1;
-            avkey.target_type = j + 1;
-            for (node = avtab_search_node(&backup_policydb->te_avtab, &avkey); node;
-                 node = avtab_search_node_next(node, avkey.specified)) {
-                if (node->key.specified == AVTAB_ALLOWED)
-                    avd->allowed |= node->datum.u.data;
-                else if (node->key.specified == AVTAB_AUDITALLOW)
-                    avd->auditallow |= node->datum.u.data;
-                else if (node->key.specified == AVTAB_AUDITDENY)
-                    avd->auditdeny &= node->datum.u.data;
-                else if (xperms && (node->key.specified & AVTAB_XPERMS))
-                    services_compute_xperms_drivers(xperms, node);
-            }
-
-            /* Check conditional av table for additional permissions */
-            cond_compute_av(&backup_policydb->te_cond_avtab, &avkey, avd, xperms);
-        }
-    }
-
-    /*
-	 * Remove any permissions prohibited by a constraint (this includes
-	 * the MLS policy).
-	 */
-    constraint = tclass_datum->constraints;
-    while (constraint) {
-        if ((constraint->permissions & (avd->allowed)) &&
-            !constraint_expr_eval(scontext, tcontext, NULL, constraint->expr)) {
-            avd->allowed &= ~(constraint->permissions);
-        }
-        constraint = constraint->next;
-    }
-
-    /*
-	 * If checking process transition permission and the
-	 * role is changing, then check the (current_role, new_role)
-	 * pair.
-	 */
-    if (tclass == backup_policydb->process_class && (avd->allowed & backup_policydb->process_trans_perms) &&
-        scontext->role != tcontext->role) {
-        for (ra = backup_policydb->role_allow; ra; ra = ra->next) {
-            if (scontext->role == ra->role && tcontext->role == ra->new_role)
-                break;
-        }
-        if (!ra)
-            avd->allowed &= ~backup_policydb->process_trans_perms;
-    }
-
-    /*
-	 * If the given source and target types have boundary
-	 * constraint, lazy checks have to mask any violated
-	 * permission and notice it to userspace via audit.
-	 */
-    type_attribute_bounds_av(scontext, tcontext, tclass, avd);
-}
-
-/*
- * Write the security context string representation of
- * the context structure `context' into a dynamically
- * allocated string of the correct size.  Set `*scontext'
- * to point to this string and set `*scontext_len' to
- * the length of the string.
- */
-static int context_struct_to_string(struct context *context, char **scontext, u32 *scontext_len)
-{
-    char *scontextp;
-
-    if (scontext)
-        *scontext = NULL;
-    *scontext_len = 0;
-
-    if (context->len) {
-        *scontext_len = context->len;
-        if (scontext) {
-            *scontext = kstrdup(context->str, GFP_ATOMIC);
-            if (!(*scontext))
-                return -ENOMEM;
-        }
-        return 0;
-    }
-
-    /* Compute the size of the context. */
-    *scontext_len += strlen(sym_name(backup_policydb, SYM_USERS, context->user - 1)) + 1;
-    *scontext_len += strlen(sym_name(backup_policydb, SYM_ROLES, context->role - 1)) + 1;
-    *scontext_len += strlen(sym_name(backup_policydb, SYM_TYPES, context->type - 1)) + 1;
-    *scontext_len += mls_compute_context_len(context);
-
-    if (!scontext)
-        return 0;
-
-    /* Allocate space for the context; caller must free this space. */
-    scontextp = kmalloc(*scontext_len, GFP_ATOMIC);
-    if (!scontextp)
-        return -ENOMEM;
-    *scontext = scontextp;
-
-    /*
-	 * Copy the user name, role name and type name into the context.
-	 */
-    scontextp += sprintf(scontextp, "%s:%s:%s", sym_name(backup_policydb, SYM_USERS, context->user - 1),
-                         sym_name(backup_policydb, SYM_ROLES, context->role - 1),
-                         sym_name(backup_policydb, SYM_TYPES, context->type - 1));
-
-    mls_sid_to_context(context, &scontextp);
-
-    *scontextp = 0;
-
-    return 0;
-}
-
-/*
- * Caveat:  Mutates scontext.
- */
-static int string_to_context_struct(struct policydb *pol, struct sidtab *sidtabp, char *scontext, u32 scontext_len,
-                                    struct context *ctx, u32 def_sid)
-{
-    struct role_datum *role;
-    struct type_datum *typdatum;
-    struct user_datum *usrdatum;
-    char *scontextp, *p, oldc;
-    int rc = 0;
-
-    context_init(ctx);
-
-    /* Parse the security context. */
-
-    rc = -EINVAL;
-    scontextp = (char *)scontext;
-
-    /* Extract the user. */
-    p = scontextp;
-    while (*p && *p != ':')
-        p++;
-
-    if (*p == 0)
-        goto out;
-
-    *p++ = 0;
-
-    usrdatum = hashtab_search(pol->p_users.table, scontextp);
-    if (!usrdatum)
-        goto out;
-
-    ctx->user = usrdatum->value;
-
-    /* Extract role. */
-    scontextp = p;
-    while (*p && *p != ':')
-        p++;
-
-    if (*p == 0)
-        goto out;
-
-    *p++ = 0;
-
-    role = hashtab_search(pol->p_roles.table, scontextp);
-    if (!role)
-        goto out;
-    ctx->role = role->value;
-
-    /* Extract type. */
-    scontextp = p;
-    while (*p && *p != ':')
-        p++;
-    oldc = *p;
-    *p++ = 0;
-
-    typdatum = hashtab_search(pol->p_types.table, scontextp);
-    if (!typdatum || typdatum->attribute)
-        goto out;
-
-    ctx->type = typdatum->value;
-
-    rc = mls_context_to_sid(pol, oldc, &p, ctx, sidtabp, def_sid);
-    if (rc)
-        goto out;
-
-    rc = -EINVAL;
-    if ((p - scontext) < scontext_len)
-        goto out;
-
-    /* Check the validity of the new context. */
-    if (!policydb_context_isvalid(pol, ctx))
-        goto out;
-    rc = 0;
-out:
-    if (rc)
-        context_destroy(ctx);
-    return rc;
-}
-
-static int ksu_security_context_to_sid(const char *scontext, u32 scontext_len, u32 *sid, gfp_t gfp_flags)
-{
-    char *scontext2, *str = NULL;
-    struct context context;
-    int rc = 0;
-
-    /* An empty security context is never valid. */
-    if (!scontext_len)
-        return -EINVAL;
-
-    *sid = SECSID_NULL;
-
-    /* Copy the string so that we can modify the copy as we parse it. */
-    scontext2 = kmalloc(scontext_len + 1, gfp_flags);
-    if (!scontext2)
-        return -ENOMEM;
-    memcpy(scontext2, scontext, scontext_len);
-    scontext2[scontext_len] = 0;
-
-    rc = string_to_context_struct(backup_policydb, backup_sidtab, scontext2, scontext_len, &context, SECSID_NULL);
-    if (rc)
-        goto out;
-    rc = sidtab_context_to_sid(backup_sidtab, &context, sid);
-    context_destroy(&context);
-out:
-    kfree(scontext2);
-    kfree(str);
-    return rc;
-}
-
-static int ksu_security_context_str_to_sid(const char *scontext, u32 *sid, gfp_t gfp)
-{
-    return ksu_security_context_to_sid(scontext, strlen(scontext), sid, gfp);
-}
-
-static int ksu_security_sid_to_context(u32 sid, char **scontext, u32 *scontext_len)
-{
-    struct context *context;
-    int rc = 0;
-
-    if (scontext)
-        *scontext = NULL;
-    *scontext_len = 0;
-
-    context = sidtab_search(backup_sidtab, sid);
-    if (!context) {
-        printk(KERN_ERR "SELinux: %s:  unrecognized SID %d\n", __func__, sid);
-        rc = -EINVAL;
-        goto out;
-    }
-    rc = context_struct_to_string(context, scontext, scontext_len);
-out:
-    return rc;
-}
-
-static void ksu_security_compute_av_user(u32 ssid, u32 tsid, u16 tclass, struct av_decision *avd)
-{
-    struct context *scontext = NULL, *tcontext = NULL;
-
-    avd_init(avd);
-
-    scontext = sidtab_search(backup_sidtab, ssid);
-    if (!scontext) {
-        printk(KERN_ERR "SELinux: %s:  unrecognized SID %d\n", __func__, ssid);
-        goto out;
-    }
-
-    /* permissive domain? */
-    if (ebitmap_get_bit(&backup_policydb->permissive_map, scontext->type))
-        avd->flags |= AVD_FLAGS_PERMISSIVE;
-
-    tcontext = sidtab_search(backup_sidtab, tsid);
-    if (!tcontext) {
-        printk(KERN_ERR "SELinux: %s:  unrecognized SID %d\n", __func__, tsid);
-        goto out;
-    }
-
-    if (unlikely(!tclass)) {
-        if (backup_policydb->allow_unknown)
-            goto allow;
-        goto out;
-    }
-
-    context_struct_compute_av(scontext, tcontext, tclass, avd, NULL);
-out:
-    return;
-allow:
-    avd->allowed = 0xffffffff;
-    goto out;
-}
-#endif

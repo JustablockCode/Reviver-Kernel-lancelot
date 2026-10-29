@@ -1,77 +1,43 @@
 #ifndef __KSU_H_MANAGER_IDENTITY
 #define __KSU_H_MANAGER_IDENTITY
 
-#include <linux/cred.h>
-#include <linux/types.h>
+#define KSU_INVALID_APPID -1
+#define KSU_PER_USER_RANGE 100000
 
-#include "compat/kernel_compat.h"
+bool ksu_manager_enabled(void);
+bool ksu_manager_uid_authorized(uid_t uid);
+bool ksu_manager_package_authorized(const char *package, uid_t uid);
 
-#define KSU_SIGNATURE_INDEX_DYNAMIC_MANAGER 255
-#define KSU_SIGNATURE_INDEX_KSU_DEBUG 254
-#define KSU_SIGNATURE_INDEX_KSU_TOOLKIT 253
+extern uid_t ksu_manager_appid; // DO NOT DIRECT USE
 
-#ifdef CONFIG_KSU_DISABLE_MANAGER
-static inline void ksu_mark_manager(u32 uid)
+static inline bool ksu_is_manager_appid_valid(void)
 {
+    return ksu_manager_appid != KSU_INVALID_APPID;
 }
 
 static inline bool is_manager(void)
 {
-    return ksu_get_uid_t(current_uid()) == 0;
+    return ksu_manager_uid_authorized(current_uid().val);
 }
 
-static inline bool ksu_is_manager_appid(u16 appid)
+static inline bool is_uid_manager(uid_t uid)
 {
-    return appid == 0;
+    return ksu_manager_uid_authorized(uid);
 }
 
-static inline bool ksu_is_manager_uid(u32 uid)
+static inline uid_t ksu_get_manager_appid(void)
 {
-    return uid == 0;
+    return ksu_manager_appid;
 }
 
-static inline bool ksu_register_manager(u32 uid, u8 signature_index)
+static inline void ksu_set_manager_appid(uid_t appid)
 {
-    return true;
+    ksu_manager_appid = appid;
 }
 
-static inline bool ksu_unregister_manager(u32 uid)
+static inline void ksu_invalidate_manager_uid(void)
 {
-    return true;
+    ksu_manager_appid = KSU_INVALID_APPID;
 }
 
-static inline void ksu_unregister_manager_by_signature_index(u8 signature_index)
-{
-}
-
-static inline int ksu_get_manager_signature_index_by_appid(u16 appid)
-{
-    return -EOPNOTSUPP;
-}
-
-static inline bool ksu_has_manager(void)
-{
-    return true;
-}
-#else
-#define PER_USER_RANGE 100000
-#define KSU_INVALID_APPID -1
-extern u16 ksu_last_manager_appid;
-
-static inline void ksu_mark_manager(u32 uid)
-{
-    ksu_last_manager_appid = uid % PER_USER_RANGE;
-}
-
-extern bool is_manager(void);
-bool ksu_is_manager_appid(u16 appid);
-extern bool ksu_is_manager_uid(u32 uid);
-extern void ksu_register_manager(u32 uid, u8 signature_index);
-extern void ksu_unregister_manager(u32 uid);
-extern void ksu_unregister_manager_by_signature_index(u8 signature_index);
-extern void ksu_unregister_all_manager(void);
-extern int ksu_get_manager_signature_index_by_appid(u16 appid);
-extern bool ksu_has_manager(void);
-#endif
-
-#endif
+#endif // __KSU_H_MANAGER_IDENTITY

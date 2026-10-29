@@ -41,6 +41,9 @@
 
 unsigned long elf_hwcap __read_mostly;
 EXPORT_SYMBOL_GPL(elf_hwcap);
+/* Native AT_HWCAP2 identity exposed by SukiSU CPU spoofing; default unchanged. */
+unsigned long elf_hwcap2 __read_mostly;
+EXPORT_SYMBOL_GPL(elf_hwcap2);
 
 #ifdef CONFIG_COMPAT
 #define COMPAT_ELF_HWCAP_DEFAULT	\

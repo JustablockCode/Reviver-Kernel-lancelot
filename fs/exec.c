@@ -1900,8 +1900,11 @@ __attribute__((hot))
 extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
 				void *argv, void *envp, int *flags);
 __attribute__((hot))
-extern int ksu_handle_post_execveat(int *fd, struct filename **filename_ptr,
+extern int ksu_handle_post_execveat_sucompat(int *fd, struct filename **filename_ptr,
 				void *argv, void *envp, int *flags, int *retval);
+#ifdef CONFIG_KSU_SUSFS
+extern int ksu_setup_preinit_file(struct filename **filename, void *argv);
+#endif
 #endif
 
 static int do_execveat_common(int fd, struct filename *filename,
@@ -1910,12 +1913,33 @@ static int do_execveat_common(int fd, struct filename *filename,
 			      int flags)
 {
 #ifdef CONFIG_KSU
-	int retval;
-	ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
+	int retval, ksu_execve_result;
+#ifdef CONFIG_KSU_SUSFS
+	int preinit_fd = -1;
+#endif
+
+	if (IS_ERR(filename))
+		return PTR_ERR(filename);
+	ksu_execve_result = ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
+#ifdef CONFIG_KSU_SUSFS
+	preinit_fd = ksu_setup_preinit_file(&filename, &argv);
+#endif
 
 	retval = __do_execve_file(fd, filename, argv, envp, flags, NULL);
 
-	ksu_handle_post_execveat(&fd, &filename, &argv, &envp, &flags, &retval);
+#ifdef CONFIG_KSU_SUSFS
+	if (preinit_fd >= 0 && retval < 0) {
+		ksys_close(preinit_fd);
+		/* exec consumed filename even on failure. Retry the real init. */
+		filename = getname_kernel("/system/bin/init");
+		if (IS_ERR(filename))
+			return PTR_ERR(filename);
+		retval = __do_execve_file(fd, filename, argv, envp, flags, NULL);
+	}
+#endif
+
+	if (!ksu_execve_result && retval >= 0)
+		ksu_handle_post_execveat_sucompat(&fd, &filename, &argv, &envp, &flags, &retval);
 
 	return retval;
 #else

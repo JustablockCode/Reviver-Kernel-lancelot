@@ -1,39 +1,3 @@
-#include <linux/dcache.h>
-#include <linux/errno.h>
-#include <linux/fdtable.h>
-#include <linux/file.h>
-#include <linux/fs.h>
-#include <linux/fs_struct.h>
-#include <linux/limits.h>
-#include <linux/namei.h>
-#include <linux/version.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0) || defined(KSU_HAS_MODERN_PROC_NS)
-#include <linux/proc_ns.h>
-#else
-#include <linux/proc_fs.h>
-#endif
-#include <linux/pid.h>
-#include <linux/slab.h>
-#include <linux/syscalls.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
-#include <linux/sched/task.h>
-#else
-#include <linux/sched.h>
-#endif
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
-#include <uapi/linux/mount.h>
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0)
-// https://github.com/torvalds/linux/commit/607ca46e97a1b6594b29647d98a32d545c24bdff
-// for kernel before this commit, include linux/fs.h is enough
-#include <uapi/linux/fs.h>
-#endif
-
-#include "klog.h" // IWYU pragma: keep
-#include "ksu.h"
-#include "compat/kernel_compat.h"
-#include "infra/su_mount_ns.h"
-
 extern int path_mount(const char *dev_name, struct path *path, const char *type_page, unsigned long flags,
                       void *data_page);
 
@@ -63,10 +27,10 @@ static void ksu_mnt_ns_global(void)
     }
 
 try_setns:
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0) || defined(KSU_COMPAT_HAS_NS_GET_PATH)
+
     rcu_read_lock();
     // &init_task is not init, but swapper/idle, which forks the init process
-    // so we need to find the init process
+    // so we need find init process
     struct pid *pid_struct = find_pid_ns(1, &init_pid_ns);
     if (unlikely(!pid_struct)) {
         rcu_read_unlock();
@@ -87,31 +51,8 @@ try_setns:
         pr_warn("failed get path for init mount namespace: %ld\n", ret);
         goto out;
     }
-#else
-    barrier(); // to shutup declaration after label
 
-    // on UL kernels we can try to just feed it with struct path of /proc/1/ns/mnt
-    // we do NOT have ns_get_path. if it works, GOOD. if it doesn't I don't care.
-
-    struct path ns_path;
-    const struct cred *saved = override_creds(ksu_cred);
-
-    // make sure to LOOKUP_FOLLOW
-    // /proc/1/ns/mnt -> 'mnt:[4026531840]'
-    long ret = kern_path("/proc/1/ns/mnt", LOOKUP_FOLLOW, &ns_path);
-    if (ret) {
-        revert_creds(saved);
-        pr_warn("kern_path /proc/1/ns/mnt fail! ret: %ld\n", ret);
-        goto out;
-    }
-    revert_creds(saved);
-#endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0) || defined(KSU_COMPAT_HAS_MODERN_DENTRY_OPEN)
     struct file *ns_file = dentry_open(&ns_path, O_RDONLY, ksu_cred);
-#else
-    struct file *ns_file = dentry_open(ns_path.dentry, ns_path.mnt, O_RDONLY, ksu_cred);
-#endif
-
     path_put(&ns_path);
     if (IS_ERR(ns_file)) {
         pr_warn("failed open file for init mount namespace: %ld\n", PTR_ERR(ns_file));
@@ -126,9 +67,9 @@ try_setns:
     }
 
     fd_install(fd, ns_file);
-    ret = ksu_sys_setns(fd, CLONE_NEWNS);
+    ret = ksyscall(setns, fd, CLONE_NEWNS);
 
-    ksu_close_fd(fd);
+    close_fd(fd);
 
     if (ret) {
         pr_warn("call setns failed: %ld\n", ret);
@@ -152,9 +93,9 @@ out:
 // individual mode , need CAP_SYS_ADMIN to perform unshare and remount
 static void ksu_mnt_ns_individual(void)
 {
-    long ret = ksys_unshare(CLONE_NEWNS);
+    long ret = ksyscall(unshare, CLONE_NEWNS);
     if (ret) {
-        pr_warn("call ksys_unshare failed: %ld\n", ret);
+        pr_warn("call sys_unshare failed: %ld\n", ret);
         return;
     }
 
@@ -179,6 +120,11 @@ void setup_mount_ns(int32_t ns_mode)
 
     if (ns_mode != KSU_NS_GLOBAL && ns_mode != KSU_NS_INDIVIDUAL) {
         pr_warn("pid: %d ,unknown mount namespace mode: %d\n", current->pid, ns_mode);
+        return;
+    }
+
+    if (!ksu_cred) {
+        pr_err("no ksu cred! skip mnt_ns magic for pid: %d.\n", current->pid);
         return;
     }
 

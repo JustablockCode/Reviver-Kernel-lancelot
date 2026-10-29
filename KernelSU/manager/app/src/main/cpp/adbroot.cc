@@ -53,7 +53,7 @@ void __system_property_read_callback(const prop_info* pi,
     orig_fn(pi, callback, cookie);
 }
 
-// If user create ksurc, use ksurc instead of mkshrc
+// If the user creates ksurc, use ksurc instead of mkshrc
 // https://cs.android.com/android/platform/superproject/+/android-latest-release:packages/modules/adb/daemon/shell_service.cpp;l=389-394
 extern "C" [[gnu::visibility("default"), gnu::used]]
 int execle(const char *pathname, const char *arg, ...) {

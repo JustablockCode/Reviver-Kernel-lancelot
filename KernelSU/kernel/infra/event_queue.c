@@ -1,19 +1,3 @@
-#include <linux/ktime.h>
-#include <linux/list.h>
-#include <linux/mutex.h>
-#include <linux/fs.h>
-#include <linux/sched.h>
-#include <linux/eventpoll.h>
-#include <linux/poll.h>
-#include <linux/slab.h>
-#include <linux/spinlock.h>
-#include <linux/string.h>
-#include <linux/uaccess.h>
-#include <linux/wait.h>
-
-#include "infra/event_queue.h"
-#include "compat/kernel_compat.h"
-
 struct ksu_event_queue_node {
     struct list_head list;
     struct ksu_event_record_hdr hdr;

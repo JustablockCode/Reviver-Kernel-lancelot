@@ -67,6 +67,10 @@ enum sel_inos {
 	SEL_INO_NEXT,	/* The next inode number to use */
 };
 
+#ifdef CONFIG_KSU
+#include <linux/ksu_selinux.h>
+#endif
+
 struct selinux_fs_info {
 	struct dentry *bool_dir;
 	unsigned int bool_num;
@@ -221,7 +225,13 @@ static const struct file_operations sel_handle_unknown_ops = {
 static int sel_open_handle_status(struct inode *inode, struct file *filp)
 {
 	struct selinux_fs_info *fsi = file_inode(filp)->i_sb->s_fs_info;
-	struct page    *status = selinux_kernel_status_page(fsi->state);
+	struct selinux_state *state = fsi->state;
+	struct page *status;
+
+#ifdef CONFIG_KSU
+	state = ksu_selinux_state_for_query(state);
+#endif
+	status = selinux_kernel_status_page(state);
 
 	if (!status)
 		return -ENOMEM;
@@ -613,6 +623,9 @@ static ssize_t sel_write_context(struct file *file, char *buf, size_t size)
 			      SECCLASS_SECURITY, SECURITY__CHECK_CONTEXT, NULL);
 	if (length)
 		goto out;
+#ifdef CONFIG_KSU
+	state = ksu_selinux_state_for_query(state);
+#endif
 
 	length = security_context_to_sid(state, buf, size, &sid, GFP_KERNEL);
 	if (length)
@@ -835,6 +848,9 @@ static ssize_t sel_write_access(struct file *file, char *buf, size_t size)
 			      SECCLASS_SECURITY, SECURITY__COMPUTE_AV, NULL);
 	if (length)
 		goto out;
+#ifdef CONFIG_KSU
+	state = ksu_selinux_state_for_query(state);
+#endif
 
 	length = -ENOMEM;
 	scon = kzalloc(size + 1, GFP_KERNEL);

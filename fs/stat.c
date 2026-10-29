@@ -17,6 +17,8 @@
 #include <linux/syscalls.h>
 #include <linux/pagemap.h>
 #include <linux/compat.h>
+#include "internal.h"
+
 #ifdef CONFIG_KSU_SUSFS
 #include <linux/susfs_def.h>
 #endif
@@ -182,6 +184,14 @@ EXPORT_SYMBOL(vfs_getattr);
  *
  * 0 will be returned on success, and a -ve error code if unsuccessful.
  */
+#ifdef CONFIG_KSU_SUSFS
+extern bool ksu_su_compat_enabled;
+extern struct static_key_true ksu_is_init_rc_hook_enabled;
+extern bool __ksu_is_allow_uid_for_current(uid_t uid);
+extern int ksu_handle_stat(int *, struct filename **, int *);
+extern void ksu_handle_vfs_fstat(int fd, loff_t *size);
+#endif
+
 int vfs_statx_fd(unsigned int fd, struct kstat *stat,
 		 u32 request_mask, unsigned int query_flags)
 {
@@ -195,6 +205,10 @@ int vfs_statx_fd(unsigned int fd, struct kstat *stat,
 	if (f.file) {
 		error = vfs_getattr(&f.file->f_path, stat,
 				    request_mask, query_flags);
+#ifdef CONFIG_KSU_SUSFS
+		if (!error && static_branch_likely(&ksu_is_init_rc_hook_enabled))
+			ksu_handle_vfs_fstat(fd, &stat->size);
+#endif
 		fdput(f);
 	}
 	return error;
@@ -235,7 +249,19 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
 		lookup_flags |= LOOKUP_EMPTY;
 
 retry:
+#ifdef CONFIG_KSU_SUSFS
+	{
+		struct filename *fname = getname_flags(filename, lookup_flags, NULL);
+
+		if (!IS_ERR(fname) && !susfs_is_current_proc_no_su() &&
+		    READ_ONCE(ksu_su_compat_enabled) &&
+		    __ksu_is_allow_uid_for_current(current_uid().val))
+			ksu_handle_stat(&dfd, &fname, &flags);
+		error = filename_lookup(dfd, fname, lookup_flags, &path, NULL);
+	}
+#else
 	error = user_path_at(dfd, filename, lookup_flags, &path);
+#endif
 	if (error)
 		goto out;
 
@@ -405,12 +431,6 @@ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
 
 	return cp_new_stat(&stat, statbuf);
 }
-
-#ifdef CONFIG_KSU
-__attribute__((hot))
-extern int ksu_handle_stat(int *dfd, const char __user **filename_user,
-				int *flags);
-#endif
 
 #if !defined(__ARCH_WANT_STAT64) || defined(__ARCH_WANT_SYS_NEWFSTATAT)
 SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,

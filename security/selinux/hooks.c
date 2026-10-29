@@ -6308,6 +6308,10 @@ bad:
 	return error;
 }
 
+#ifdef CONFIG_KSU
+#include <linux/ksu_selinux.h>
+#endif
+
 static int selinux_setprocattr(const char *name, void *value, size_t size)
 {
 	struct task_security_struct *tsec;
@@ -6350,6 +6354,11 @@ static int selinux_setprocattr(const char *name, void *value, size_t size)
 			str[size-1] = 0;
 			size--;
 		}
+#ifdef CONFIG_KSU
+		error = ksu_selinux_check_context(name, value, size);
+		if (error)
+			return error;
+#endif
 		error = security_context_to_sid(&selinux_state, value, size,
 						&sid, GFP_KERNEL);
 		if (error == -EINVAL && !strcmp(name, "fscreate")) {

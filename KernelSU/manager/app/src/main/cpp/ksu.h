@@ -5,12 +5,10 @@
 #ifndef KERNELSU_KSU_H
 #define KERNELSU_KSU_H
 
-#include "prelude.h"
-#include <stdint.h>
-#include <sys/types.h>
+#include <cstdint>
 #include <sys/ioctl.h>
 #include <sys/prctl.h>
-#include <sys/syscall.h>
+#include <utility>
 
 #include "uapi/ksu.h"
 
@@ -26,41 +24,28 @@ bool is_safe_mode();
 
 bool is_lkm_mode();
 
-bool is_manager();
+bool is_lkm_bundled();
 
 bool is_late_load_mode();
 
-bool is_lkm_bundled();
+bool is_manager();
 
 bool is_pr_build();
 
-void get_full_version(char* buff);
+using p_key_t = char[KSU_MAX_PACKAGE_NAME];
 
-bool set_app_profile(const struct app_profile *profile);
+bool set_app_profile(const app_profile *profile);
 
-int get_app_profile(struct app_profile* profile);
-
-void get_hook_type(char *buff);
-
-int get_kernel_patch_implement();
-
-bool set_dynamic_manager(unsigned int size, const char* hash);
-
-bool get_dynamic_manager(struct ksu_dynamic_manager_cmd* config);
-
-bool clear_dynamic_manager();
+int get_app_profile(app_profile *profile);
 
 // Su compat
 bool set_su_enabled(bool enabled);
+
 bool is_su_enabled();
-
-// sulog
-bool is_sulog_enabled();
-
-bool set_sulog_enabled(bool enabled);
 
 // Kernel umount
 bool set_kernel_umount_enabled(bool enabled);
+
 bool is_kernel_umount_enabled();
 
 // SELinux hide
@@ -68,25 +53,56 @@ int set_selinux_hide_enabled(bool enabled);
 
 bool is_selinux_hide_enabled();
 
-bool get_managers_list(struct ksu_get_managers_cmd **out_cmd);
+// Mount hide
+int set_mount_hide_enabled(bool enabled);
+
+bool is_mount_hide_enabled();
+
+// AVC log spoof
+int set_avc_spoof_enabled(bool enabled);
+bool is_avc_spoof_enabled();
+
+// CPU spoof SET-MIDR io passthrough (kept struct layout from
+// uapi/supercall.h::ksu_set_spoof_cpu_cmd).
+int ksu_set_spoof_cpu(const struct ksu_set_spoof_cpu_cmd *cmd);
+
+// KSU_EXTENSION_UMOUNT_PATHS
+int umount_paths_wipe();
+int umount_paths_add(const char *path, uint32_t flags);
+int umount_paths_delete(const char *path);
+int umount_paths_list(char *buffer, uint32_t buf_size);
+
+// KSU_EXTENSION_DYNAMIC_MANAGER
+int dynamic_manager_get(struct ksu_manager_cmd *cmd);
+int dynamic_manager_set(struct ksu_manager_cmd *cmd);
+
 bool get_allow_list(struct ksu_new_get_allow_list_cmd *);
 
-// Legacy Compatible
-struct ksu_version_info legacy_get_info();
+bool get_full_version(char* buff);
+bool get_hook_type(char *buff);
 
-struct ksu_version_info {
-    int32_t version;
-    int32_t flags;
-};
+inline std::pair<int, int> legacy_get_info() {
+    int32_t version = -1;
+    int32_t flags = 0;
+    int32_t result = 0;
+    prctl(static_cast<int>(0xDEADBEEF), 2, &version, &flags, &result);
+    return {version, flags};
+}
 
-bool legacy_get_allow_list(int *uids, int *size);
-bool legacy_is_safe_mode();
-bool legacy_uid_should_umount(int uid);
-bool legacy_set_app_profile(const struct app_profile* profile);
-bool legacy_get_app_profile(char* key, struct app_profile* profile);
-bool legacy_set_su_enabled(bool enabled);
-bool legacy_is_su_enabled();
-bool legacy_get_hook_type(char* hook_type, size_t size);
-void legacy_get_full_version(char* buff);
+#define DEFINE_CACHED_GETTER(name, ioctl, cmd_type, field, size) \
+    static char g_##name[size] = {0}; \
+    bool get_##name(char *buff) { \
+        if (g_##name[0] == '\0') { \
+            struct cmd_type cmd = {0}; \
+            if (ksuctl(ioctl, &cmd) == 0) { \
+                snprintf(g_##name, sizeof(g_##name), "%s", cmd.field); \
+            } \
+        } \
+        if (g_##name[0] != '\0') { \
+            snprintf(buff, size, "%s", g_##name); \
+            return true; \
+        } \
+        return false; \
+    }
 
 #endif //KERNELSU_KSU_H

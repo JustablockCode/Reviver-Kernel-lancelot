@@ -20,8 +20,11 @@
 #include <linux/workqueue.h>
 #include <linux/fsnotify_backend.h>
 #include <linux/jump_label.h>
-#include <linux/version.h> // We need check kernel version.
 #include <linux/security.h>
+#include <linux/bitmap.h>
+#include <linux/limits.h>
+#include <linux/rcupdate.h>
+#include <linux/string.h>
 #include <linux/susfs.h>
 #include "fuse/fuse_i.h"
 #include "mount.h"
@@ -40,6 +43,55 @@ DEFINE_STATIC_KEY_TRUE(susfs_is_log_enabled);
 #define SUSFS_LOGI(fmt, ...) 
 #define SUSFS_LOGE(fmt, ...) 
 #endif
+
+/*
+ * Switches the selinux domain of the current process to the KernelSU one, so
+ * that the data paths of the apps can be accessed despite of the selinux
+ * restrictions.
+ * The original credentials are returned, they have to be restored with
+ * susfs_restore_creds() afterwards.
+ * Returns the original credentials on success, NULL on failure.
+ */
+static struct cred *susfs_switch_to_ksu_domain(void) {
+	struct cred *orig_cred = NULL;
+	struct cred *cred = NULL;
+
+	/* a copy of the current credentials, which is restored later on */
+	orig_cred = prepare_creds();
+	if (!orig_cred) {
+		SUSFS_LOGE("failed to prepare creds!\n");
+		return NULL;
+	}
+
+	cred = prepare_creds();
+	if (!cred) {
+		SUSFS_LOGE("failed to prepare creds!\n");
+		abort_creds(orig_cred);
+		return NULL;
+	}
+
+	setup_selinux("u:r:ksu:s0", cred);
+	commit_creds(cred);
+
+	if (!susfs_is_current_ksu_domain()) {
+		SUSFS_LOGE("domain is not ksu, restoring the original creds\n");
+		commit_creds(orig_cred);
+		return NULL;
+	}
+
+	return orig_cred;
+}
+
+/*
+ * Restores the original credentials that were saved by
+ * susfs_switch_to_ksu_domain().
+ */
+static void susfs_restore_creds(struct cred *orig_cred) {
+	if (!orig_cred)
+		return;
+
+	commit_creds(orig_cred);
+}
 
 /* sus_path */
 #ifdef CONFIG_KSU_SUSFS_SUS_PATH
@@ -79,17 +131,17 @@ void susfs_add_sus_path(void __user **user_info) {
 			info.err = -ENOENT;
 			goto out_path_put_path;
 		}
-		set_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_state);
-		set_bit(AS_FLAGS_SUS_PATH, &inode->i_state);
-		SUSFS_LOGI("flagged AS_FLAGS_SUS_PATH on pathname: '%s', fi->nodeid: %llu, fi->inode.i_ino: %lu, fi->inode.i_state: 0x%lx\n",
-					info.target_pathname, fi->nodeid, fi->inode.i_ino, fi->inode.i_state);
+		set_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_mapping->flags);
+		set_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags);
+		SUSFS_LOGI("flagged AS_FLAGS_SUS_PATH on pathname: '%s', fi->nodeid: %llu, fi->inode.i_ino: %lu, fi->inode.i_mapping->flags: 0x%lx\n",
+					info.target_pathname, fi->nodeid, fi->inode.i_ino, fi->inode.i_mapping->flags);
 		info.err = 0;
 		goto out_path_put_path;
 	}
 
-	set_bit(AS_FLAGS_SUS_PATH, &inode->i_state);
-	SUSFS_LOGI("flagged AS_FLAGS_SUS_PATH on pathname: '%s', ino: '%lu', inode->i_state: 0x%lx\n",
-				info.target_pathname, inode->i_ino, inode->i_state);
+	set_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags);
+	SUSFS_LOGI("flagged AS_FLAGS_SUS_PATH on pathname: '%s', ino: '%lu', inode->i_mapping->flags: 0x%lx\n",
+				info.target_pathname, inode->i_ino, inode->i_mapping->flags);
 	info.err = 0;
 out_path_put_path:
 	path_put(&path);
@@ -159,14 +211,14 @@ static void susfs_run_sus_path_loop(void) {
 					path_put(&path);
 					continue;
 				}
-				set_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_state);
-				set_bit(AS_FLAGS_SUS_PATH, &inode->i_state);
-				SUSFS_LOGI("re-flag AS_FLAGS_SUS_PATH on path '%s', fi->inode.i_ino: '%lu', fi->inode.i_state: 0x%lx\n",
-						cursor->target_pathname, fi->inode.i_ino, fi->inode.i_state);
+				set_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_mapping->flags);
+				set_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags);
+				SUSFS_LOGI("re-flag AS_FLAGS_SUS_PATH on path '%s', fi->inode.i_ino: '%lu', fi->inode.i_mapping->flags: 0x%lx\n",
+						cursor->target_pathname, fi->inode.i_ino, fi->inode.i_mapping->flags);
 			} else {
-				set_bit(AS_FLAGS_SUS_PATH, &inode->i_state);
-				SUSFS_LOGI("re-flag AS_FLAGS_SUS_PATH on path '%s', inode->i_ino: '%lu', inode->i_state: 0x%lx\n",
-						cursor->target_pathname, inode->i_ino, inode->i_state);
+				set_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags);
+				SUSFS_LOGI("re-flag AS_FLAGS_SUS_PATH on path '%s', inode->i_ino: '%lu', inode->i_mapping->flags: 0x%lx\n",
+						cursor->target_pathname, inode->i_ino, inode->i_mapping->flags);
 			}
 			path_put(&path);
 		}
@@ -203,13 +255,13 @@ bool susfs_is_inode_sus_path(struct inode *inode)
 			return false;
 		}
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-		if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_state) &&
+		if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_mapping->flags) &&
 			is_i_uid_not_allowed(i_uid_into_vfsuid(idmap, &fi->inode).val)))
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
-		if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_state) &&
+		if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_mapping->flags) &&
 			is_i_uid_not_allowed(i_uid_into_mnt(i_user_ns(&fi->inode), &fi->inode).val)))
 #else
-		if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_state) &&
+		if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &fi->inode.i_mapping->flags) &&
 			is_i_uid_not_allowed(fi->inode.i_uid.val)))
 #endif
 		{
@@ -219,13 +271,13 @@ bool susfs_is_inode_sus_path(struct inode *inode)
 		return false;
 	}
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
-	if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &inode->i_state) &&
+	if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags) &&
 		is_i_uid_not_allowed(i_uid_into_vfsuid(idmap, inode).val)))
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
-	if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &inode->i_state) &&
+	if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags) &&
 		is_i_uid_not_allowed(i_uid_into_mnt(i_user_ns(inode), inode).val)))
 #else
-	if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &inode->i_state) &&
+	if (unlikely(test_bit(AS_FLAGS_SUS_PATH, &inode->i_mapping->flags) &&
 		is_i_uid_not_allowed(inode->i_uid.val)))
 #endif
 	{
@@ -275,22 +327,8 @@ out_copy_to_user:
 static DEFINE_MUTEX(susfs_mutex_lock_sus_kstat);
 static DEFINE_HASHTABLE(SUS_KSTAT_HLIST, 14);
 
-static int statfs_by_dentry(struct dentry *dentry, struct kstatfs *buf)
-{
-	int retval;
-
-	if (!dentry->d_sb->s_op->statfs)
-		return -ENOSYS;
-
-	memset(buf, 0, sizeof(*buf));
-	retval = security_sb_statfs(dentry);
-	if (retval)
-		return retval;
-	retval = dentry->d_sb->s_op->statfs(dentry, buf);
-	if (retval == 0 && buf->f_frsize == 0)
-		buf->f_frsize = buf->f_bsize;
-	return retval;
-}
+extern int calculate_f_flags_wrapper(struct vfsmount *mnt);
+extern int statfs_by_dentry_wrapper(struct dentry *dentry, struct kstatfs *buf);
 
 static int susfs_mark_inode_sus_kstat(char *target_pathname, struct st_susfs_sus_kstat_hlist *new_entry, bool is_update) {
 	struct path path;
@@ -326,15 +364,17 @@ static int susfs_mark_inode_sus_kstat(char *target_pathname, struct st_susfs_sus
 		new_entry->target_dev = fi->inode.i_sb->s_dev;
 		new_entry->spoofed_mnt_id = susfs_get_non_sus_mnt_id_from_mnt(real_mount(path.mnt));
 		no_sus_vfsmnt = susfs_get_non_sus_vfsmnt_from_vfsmnt(path.mnt);
-		err = statfs_by_dentry(no_sus_vfsmnt->mnt_root, &new_entry->spoofed_kstatfs);
+		err = statfs_by_dentry_wrapper(no_sus_vfsmnt->mnt_root, &new_entry->spoofed_kstatfs);
+		if (!err)
+			new_entry->spoofed_kstatfs.f_flags = calculate_f_flags_wrapper(no_sus_vfsmnt);
 		dput(no_sus_vfsmnt->mnt_root);
 		mntput(no_sus_vfsmnt);
 		if (err)
 			goto out_path_put_path;
 
-		set_bit(AS_FLAGS_SUS_KSTAT, &fi->inode.i_state);
-		SUSFS_LOGI("marked AS_FLAGS_SUS_KSTAT on pathname: '%s', is_fuse: %d, fi->inode.i_sb->s_dev: %u, fi->nodeid: %llu, fi->inode.i_ino: %lu, fi->inode.i_state: 0x%lx, spoofed_mnt_id: '%d'\n",
-					target_pathname, new_entry->is_fuse, fi->inode.i_sb->s_dev, fi->nodeid, fi->inode.i_ino, fi->inode.i_state, new_entry->spoofed_mnt_id);
+		set_bit(AS_FLAGS_SUS_KSTAT, &fi->inode.i_mapping->flags);
+		SUSFS_LOGI("marked AS_FLAGS_SUS_KSTAT on pathname: '%s', is_fuse: %d, fi->inode.i_sb->s_dev: %u, fi->nodeid: %llu, fi->inode.i_ino: %lu, fi->inode.i_mapping->flags: 0x%lx, spoofed_mnt_id: '%d'\n",
+					target_pathname, new_entry->is_fuse, fi->inode.i_sb->s_dev, fi->nodeid, fi->inode.i_ino, fi->inode.i_mapping->flags, new_entry->spoofed_mnt_id);
 		goto out_path_put_path;
 	}
 
@@ -345,15 +385,17 @@ static int susfs_mark_inode_sus_kstat(char *target_pathname, struct st_susfs_sus
 	new_entry->target_dev = inode->i_sb->s_dev;
 	new_entry->spoofed_mnt_id = susfs_get_non_sus_mnt_id_from_mnt(real_mount(path.mnt));
 	no_sus_vfsmnt = susfs_get_non_sus_vfsmnt_from_vfsmnt(path.mnt);
-	err = statfs_by_dentry(no_sus_vfsmnt->mnt_root, &new_entry->spoofed_kstatfs);
+	err = statfs_by_dentry_wrapper(no_sus_vfsmnt->mnt_root, &new_entry->spoofed_kstatfs);
+	if (!err)
+		new_entry->spoofed_kstatfs.f_flags = calculate_f_flags_wrapper(no_sus_vfsmnt);
 	dput(no_sus_vfsmnt->mnt_root);
 	mntput(no_sus_vfsmnt);
 	if (err)
 		goto out_path_put_path;
 
-	set_bit(AS_FLAGS_SUS_KSTAT, &inode->i_state);
-	SUSFS_LOGI("marked AS_FLAGS_SUS_KSTAT on pathname: '%s', is_fuse: %d, inode->i_sb->s_dev: %u,  inode->i_ino: %lu, inode->i_state: 0x%lx, spoofed_mnt_id: '%d'\n",
-				target_pathname, new_entry->is_fuse, inode->i_sb->s_dev, inode->i_ino, inode->i_state, new_entry->spoofed_mnt_id);
+	set_bit(AS_FLAGS_SUS_KSTAT, &inode->i_mapping->flags);
+	SUSFS_LOGI("marked AS_FLAGS_SUS_KSTAT on pathname: '%s', is_fuse: %d, inode->i_sb->s_dev: %u,  inode->i_ino: %lu, inode->i_mapping->flags: 0x%lx, spoofed_mnt_id: '%d'\n",
+				target_pathname, new_entry->is_fuse, inode->i_sb->s_dev, inode->i_ino, inode->i_mapping->flags, new_entry->spoofed_mnt_id);
 
 out_path_put_path:
 	path_put(&path);
@@ -499,7 +541,6 @@ void susfs_update_sus_kstat(void __user **user_info) {
 			memcpy(&new_entry->info, &tmp_entry->info, sizeof(tmp_entry->info));
 			new_entry->info.target_ino = info.target_ino;
 			new_entry->target_ino = info.target_ino;
-			new_entry->target_dev = tmp_entry->target_dev;
 			new_entry->is_fuse = tmp_entry->is_fuse;
 			info.err = susfs_mark_inode_sus_kstat(new_entry->info.target_pathname, new_entry, true);
 			if (info.err) {
@@ -519,6 +560,7 @@ void susfs_update_sus_kstat(void __user **user_info) {
 		}
 	}
 	mutex_unlock(&susfs_mutex_lock_sus_kstat);
+	kfree(new_entry);
 	info.err = -ENOENT;
 
 out_copy_to_user:
@@ -539,7 +581,7 @@ __attribute__((hot)) bool susfs_is_inode_sus_kstat(struct inode *inode, bool *ou
 			SUSFS_LOGE("fi || fi->inode.i_mapping is NULL\n");
 			return false;
 		}
-		if (test_bit(AS_FLAGS_SUS_KSTAT, &fi->inode.i_state)) {
+		if (test_bit(AS_FLAGS_SUS_KSTAT, &fi->inode.i_mapping->flags)) {
 			*out_is_fuse = true;
 			return true;
 		}
@@ -549,7 +591,7 @@ __attribute__((hot)) bool susfs_is_inode_sus_kstat(struct inode *inode, bool *ou
 		SUSFS_LOGE("inode->i_mapping is NULL\n");
 		return false;
 	}
-	if (test_bit(AS_FLAGS_SUS_KSTAT, &inode->i_state))
+	if (test_bit(AS_FLAGS_SUS_KSTAT, &inode->i_mapping->flags))
 		return true;
 	return false;
 }
@@ -863,11 +905,17 @@ out_copy_to_user:
 
 void susfs_spoof_cmdline_or_bootconfig(struct seq_file *m) {
 	unsigned seq;
+	char *buf = (char *)kmalloc(SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE, GFP_KERNEL);
 
+	if (!buf) {
+		return;
+	}
 	do {
 		seq = read_seqbegin(&susfs_fake_cmdline_or_bootconfig_seqlock);
-		seq_puts(m, fake_cmdline_or_bootconfig);
+		strscpy(buf, fake_cmdline_or_bootconfig, SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE);
 	} while (read_seqretry(&susfs_fake_cmdline_or_bootconfig_seqlock, seq));
+	seq_puts(m, buf);
+	kfree(buf);
 }
 #endif
 
@@ -1003,8 +1051,8 @@ void susfs_add_open_redirect(void __user **user_info) {
 		hash_add_rcu(OPEN_REDIRECT_HLIST, &new_entry_target->node, new_entry_target->target_ino);
 		hash_add_rcu(OPEN_REDIRECT_HLIST, &new_entry_redirected->node, new_entry_redirected->target_ino);
 		// we need to mark both target and redirected path inode just for spoofing readlink as well
-		set_bit(AS_FLAGS_OPEN_REDIRECT, &redirected_inode->i_state);
-		set_bit(AS_FLAGS_OPEN_REDIRECT, &target_inode->i_state);
+		set_bit(AS_FLAGS_OPEN_REDIRECT, &redirected_inode->i_mapping->flags);
+		set_bit(AS_FLAGS_OPEN_REDIRECT, &target_inode->i_mapping->flags);
 		mutex_unlock(&susfs_mutex_lock_open_redirect);
 		synchronize_srcu(&susfs_srcu_open_redirect);
 		if (is_second_dup_found)
@@ -1021,8 +1069,8 @@ void susfs_add_open_redirect(void __user **user_info) {
 	hash_add_rcu(OPEN_REDIRECT_HLIST, &new_entry_target->node, new_entry_target->target_ino);
 	hash_add_rcu(OPEN_REDIRECT_HLIST, &new_entry_redirected->node, new_entry_redirected->target_ino);
 	// we need to mark both target and redirected path inode just for spoofing readlink as well
-	set_bit(AS_FLAGS_OPEN_REDIRECT, &redirected_inode->i_state);
-	set_bit(AS_FLAGS_OPEN_REDIRECT, &target_inode->i_state);
+	set_bit(AS_FLAGS_OPEN_REDIRECT, &redirected_inode->i_mapping->flags);
+	set_bit(AS_FLAGS_OPEN_REDIRECT, &target_inode->i_mapping->flags);
 	mutex_unlock(&susfs_mutex_lock_open_redirect);
 	info.err = 0;
 
@@ -1183,7 +1231,7 @@ void susfs_add_sus_map(void __user **user_info) {
 		info.err = -ENOENT;
 		goto out_path_put_path;
 	}
-	set_bit(AS_FLAGS_SUS_MAP, &inode->i_state);
+	set_bit(AS_FLAGS_SUS_MAP, &inode->i_mapping->flags);
 	SUSFS_LOGI("pathname: '%s', is flagged as AS_FLAGS_SUS_MAP\n", info.target_pathname);
 	info.err = 0;
 out_path_put_path:
@@ -1195,6 +1243,363 @@ out_copy_to_user:
 	SUSFS_LOGI("CMD_SUSFS_ADD_SUS_MAP -> ret: %d\n", info.err);
 }
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+
+/* priority uid filter */
+struct susfs_priority_uid_filter_bitmap {
+	struct rcu_head			rcu;
+	unsigned long			bits[SUSFS_PRIORITY_UID_FILTER_BITMAP_LEN];
+};
+
+static struct susfs_priority_uid_filter_bitmap __rcu *priority_uid_filter_bitmap;
+static DEFINE_MUTEX(susfs_mutex_lock_priority_uid_filter);
+/*
+ * The app package names of the apps that are currently filtered.
+ * They are stored so that the uids of the apps can be resolved again whenever
+ * the apps are installed or uninstalled, because the uid of an app changes
+ * when the app is reinstalled.
+ * Protected by susfs_mutex_lock_priority_uid_filter.
+ */
+static char *susfs_priority_app_strings = NULL;
+/* Ensures that there is only one resolving thread running at the same time */
+static atomic_t susfs_priority_app_strings_running = ATOMIC_INIT(0);
+
+/*
+ * Checks whether the given string is a valid app package name.
+ * Returns true if it is a valid app package name.
+ */
+static bool susfs_is_valid_app_name(const char *app_name) {
+	const char *p = app_name;
+	size_t len = strlen(app_name);
+
+	if (len == 0 || len > 255)
+		return false;
+
+	/* reject the relative paths to prevent any path traversal */
+	if (!strcmp(app_name, ".") || !strcmp(app_name, ".."))
+		return false;
+
+	for (; *p != '\0'; p++) {
+		if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+			(*p >= '0' && *p <= '9') || *p == '.' || *p == '_')
+			continue;
+		return false;
+	}
+
+	return true;
+}
+
+/*
+ * Resolves the uid of the given app package name with the owner uid of the
+ * data path of the app ('/data/data/<app_name>').
+ * Returns 0 on success, a negative errno on failure.
+ */
+static int susfs_resolve_priority_app_uid(const char *app_name, uid_t *uid) {
+	char app_path[512];
+	struct path path;
+	struct kstat st;
+	int len;
+	int ret;
+
+	len = scnprintf(app_path, sizeof(app_path), "/data/data/%s", app_name);
+	if (len < 0 || len >= sizeof(app_path)) {
+		SUSFS_LOGE("the app name '%s' is too long\n", app_name);
+		return -EINVAL;
+	}
+
+	ret = kern_path(app_path, LOOKUP_FOLLOW, &path);
+	if (ret) {
+		SUSFS_LOGE("failed to look up '%s': %d\n", app_path, ret);
+		return ret;
+	}
+
+	ret = vfs_getattr(&path, &st, STATX_BASIC_STATS, 0);
+	path_put(&path);
+	if (ret) {
+		SUSFS_LOGE("failed to get the attributes of '%s': %d\n", app_path, ret);
+		return ret;
+	}
+
+	*uid = from_kuid(&init_user_ns, st.uid);
+	if (*uid < SUSFS_PRIORITY_UID_FILTER_MIN_UID ||
+		*uid > SUSFS_PRIORITY_UID_FILTER_MAX_UID)
+		return -EINVAL;
+
+	return 0;
+}
+
+/*
+ * Parses the comma separated list of the app package names, resolves the uid
+ * of every app and maps the uids into the given bitmap.
+ *
+ * The spaces before and after the commas are ignored.
+ * The given string is modified while it is being parsed.
+ * If 'skip_failed' is true, the apps whose data path cannot be found are
+ * skipped (they are uninstalled already), otherwise an error is returned.
+ * Returns 0 on success, a negative errno on failure.
+ */
+static int susfs_parse_priority_app_names(char *app_str, unsigned long *bits, bool skip_failed) {
+	char *token = NULL;
+	char *saveptr = app_str;
+	uid_t uid = 0;
+	int ret;
+
+	while ((token = strsep(&saveptr, ",")) != NULL) {
+		token = strim(token);
+		if (*token == '\0') {
+			/* tolerate the empty items, e.g., "com.foo,,com.bar" */
+			continue;
+		}
+
+		if (!susfs_is_valid_app_name(token)) {
+			SUSFS_LOGE("invalid app name '%s'\n", token);
+			return -EINVAL;
+		}
+
+		ret = susfs_resolve_priority_app_uid(token, &uid);
+		if (ret) {
+			if (skip_failed)
+				continue;
+			return ret;
+		}
+
+		if (uid < SUSFS_PRIORITY_UID_FILTER_MIN_UID || uid > SUSFS_PRIORITY_UID_FILTER_MAX_UID) {
+			SUSFS_LOGE("the uid %u of the app '%s' is out of the allowed range [%d, %d]\n",
+					uid, token, SUSFS_PRIORITY_UID_FILTER_MIN_UID,
+					SUSFS_PRIORITY_UID_FILTER_MAX_UID);
+			if (!skip_failed)
+				return -EINVAL;
+			continue;
+		}
+
+		set_bit(uid - SUSFS_PRIORITY_UID_FILTER_MIN_UID, bits);
+		SUSFS_LOGI("app_name '%s', uid '%u' is now added to priority_uid_filter_bitmap\n", token, uid);
+	}
+
+	return 0;
+}
+
+void susfs_set_priority_uid_filter(void __user **user_info) {
+	struct st_susfs_priority_uid_filter *info = NULL;
+	struct susfs_priority_uid_filter_bitmap *new_bitmap = NULL;
+	struct susfs_priority_uid_filter_bitmap *old_bitmap = NULL;
+	char *new_app_strings = NULL;
+	struct cred *orig_cred = NULL;
+	size_t app_str_len = 0;
+	int err = 0;
+	static bool is_uid_filter_set_before = false;
+
+	info = kvmalloc(sizeof(*info), GFP_KERNEL | __GFP_ZERO);
+	if (!info) {
+		err = -ENOMEM;
+		goto out_copy_to_user;
+	}
+
+	if (copy_from_user(info, (struct st_susfs_priority_uid_filter __user*)*user_info, sizeof(*info))) {
+		err = -EFAULT;
+		goto out_copy_to_user;
+	}
+
+	/* the app names string must be null terminated within the buffer */
+	if (!memchr(info->app_strings, '\0', sizeof(info->app_strings))) {
+		SUSFS_LOGE("the app names string is not null terminated\n");
+		err = -EINVAL;
+		goto out_copy_to_user;
+	}
+
+	if (*info->app_strings == '\0') {
+		SUSFS_LOGE("the app names string cannot be empty\n");
+		err = -EINVAL;
+		goto out_copy_to_user;
+	}
+
+	app_str_len = strlen(info->app_strings);
+
+	/*
+	 * The app names are stored as they are, so that the uids of the apps can
+	 * be resolved again later on, when the apps are installed or uninstalled.
+	 */
+	new_app_strings = kvmalloc(app_str_len + 1, GFP_KERNEL | __GFP_ZERO);
+	if (!new_app_strings) {
+		err = -ENOMEM;
+		goto out_copy_to_user;
+	}
+	memcpy(new_app_strings, info->app_strings, app_str_len + 1);
+
+	new_bitmap = (struct susfs_priority_uid_filter_bitmap *)kzalloc(sizeof(*new_bitmap), GFP_KERNEL);
+	if (!new_bitmap) {
+		err = -ENOMEM;
+		goto out_free_new_app_strings;
+	}
+
+	/*
+	 * The data paths of the apps cannot be accessed with the selinux
+	 * restrictions of the calling process, hence the selinux domain is
+	 * switched to the KernelSU one before the uids are resolved.
+	 */
+	orig_cred = susfs_switch_to_ksu_domain();
+	if (!orig_cred) {
+		err = -EINVAL;
+		goto out_free_new_bitmap;
+	}
+
+	if (is_uid_filter_set_before)
+		SUSFS_LOGI("renewing the priority uid filter\n");
+	err = susfs_parse_priority_app_names(info->app_strings, new_bitmap->bits, false);
+
+	susfs_restore_creds(orig_cred);
+	orig_cred = NULL;
+
+	if (err)
+		goto out_free_new_bitmap;
+
+	/*
+	 * Publish the new bitmap and drop the old one.
+	 * The mutex serializes the writers, while the readers are protected
+	 * by RCU, hence the readers always see a consistent bitmap and they
+	 * never access a freed bitmap.
+	 */
+	mutex_lock(&susfs_mutex_lock_priority_uid_filter);
+	old_bitmap = rcu_dereference_protected(priority_uid_filter_bitmap, lockdep_is_held(&susfs_mutex_lock_priority_uid_filter));
+	rcu_assign_pointer(priority_uid_filter_bitmap, new_bitmap);
+	new_bitmap = NULL;
+	kvfree(susfs_priority_app_strings);
+	susfs_priority_app_strings = new_app_strings;
+	new_app_strings = NULL;
+	if (!is_uid_filter_set_before)
+		is_uid_filter_set_before = true;
+	mutex_unlock(&susfs_mutex_lock_priority_uid_filter);
+	synchronize_rcu();
+	kfree_rcu(old_bitmap, rcu);
+
+	SUSFS_LOGI("the priority uid filter is set\n");
+	err = 0;
+
+out_free_new_bitmap:
+	if (new_bitmap)
+		kfree(new_bitmap);
+out_free_new_app_strings:
+	if (new_app_strings)
+		kvfree(new_app_strings);
+out_copy_to_user:
+	if (copy_to_user(&((struct st_susfs_priority_uid_filter __user*)*user_info)->err, &err, sizeof(err))) {
+		err = -EFAULT;
+	}
+	SUSFS_LOGI("CMD_SUSFS_SET_PRIORITY_UID_FILTER -> ret: %d\n", err);
+	if (info)
+		kvfree(info);
+}
+
+/*
+ * The thread that resolves the uids of the stored app package names again,
+ * so that the filter stays up to date when the apps are installed or
+ * uninstalled, because the uid of an app changes when it is reinstalled.
+ */
+static int susfs_priority_app_strings_worker(void *data) {
+	struct susfs_priority_uid_filter_bitmap *new_bitmap = NULL;
+	struct susfs_priority_uid_filter_bitmap *old_bitmap = NULL;
+	struct cred *orig_cred = NULL;
+	char *app_strings = NULL;
+	size_t app_str_len = 0;
+	int ret = 0;
+
+	/*
+	 * The data paths of the apps cannot be accessed with the selinux
+	 * restrictions of the default domain of the thread, hence the selinux
+	 * domain is switched to the KernelSU one.
+	 */
+	orig_cred = susfs_switch_to_ksu_domain();
+	if (!orig_cred)
+		goto out;
+
+	/* take a snapshot of the stored app package names */
+	mutex_lock(&susfs_mutex_lock_priority_uid_filter);
+	if (susfs_priority_app_strings) {
+		app_str_len = strlen(susfs_priority_app_strings);
+		app_strings = kvmalloc(app_str_len + 1, GFP_KERNEL | __GFP_ZERO);
+		if (app_strings)
+			memcpy(app_strings, susfs_priority_app_strings, app_str_len + 1);
+	}
+	mutex_unlock(&susfs_mutex_lock_priority_uid_filter);
+
+	if (!app_strings)
+		goto out_restore_creds;
+
+	new_bitmap = (struct susfs_priority_uid_filter_bitmap *)kzalloc(sizeof(*new_bitmap), GFP_KERNEL);
+	if (!new_bitmap)
+		goto out_restore_creds;
+
+	/* the apps that are uninstalled already are skipped */
+	ret = susfs_parse_priority_app_names(app_strings, new_bitmap->bits, true);
+	if (ret)
+		goto out_restore_creds;
+
+	/*
+	 * The old bitmap is zeroed and the newly resolved uids are mapped into
+	 * the new one, which is then published to the readers.
+	 */
+	mutex_lock(&susfs_mutex_lock_priority_uid_filter);
+	old_bitmap = rcu_dereference_protected(priority_uid_filter_bitmap, lockdep_is_held(&susfs_mutex_lock_priority_uid_filter));
+	rcu_assign_pointer(priority_uid_filter_bitmap, new_bitmap);
+	new_bitmap = NULL;
+	mutex_unlock(&susfs_mutex_lock_priority_uid_filter);
+	synchronize_rcu();
+	kfree_rcu(old_bitmap, rcu);
+
+	SUSFS_LOGI("the uids of the priority uid filter are resolved again\n");
+
+out_restore_creds:
+	susfs_restore_creds(orig_cred);
+	orig_cred = NULL;
+out:
+	if (new_bitmap)
+		kfree(new_bitmap);
+	if (app_strings)
+		kvfree(app_strings);
+	atomic_set(&susfs_priority_app_strings_running, 0);
+
+	return ret;
+}
+
+/*
+ * Resolves the uids of the stored app package names again in a new thread,
+ * because the resolving of the uids requires the KernelSU selinux domain,
+ * which must not be applied to the calling process.
+ */
+void susfs_parse_priority_app_strings(void) {
+	/* do not spawn a new thread if there is already one running */
+	if (atomic_cmpxchg(&susfs_priority_app_strings_running, 0, 1))
+		return;
+
+	if (IS_ERR(kthread_run(susfs_priority_app_strings_worker, NULL, "susfs_gpsp_appstr"))) {
+		atomic_set(&susfs_priority_app_strings_running, 0);
+		SUSFS_LOGE("failed to create the thread susfs_priority_app_strings\n");
+	}
+}
+
+/*
+ * Lockless lookup for the getpriority/setpriority syscall path.
+ * Returns true if the uid is hidden by the priority uid filter.
+ */
+bool susfs_is_priority_uid_filtered(uid_t uid) {
+	struct susfs_priority_uid_filter_bitmap *bitmap;
+
+	uid_t app_id = uid % 100000;
+
+	if (app_id < SUSFS_PRIORITY_UID_FILTER_MIN_UID ||
+		app_id > SUSFS_PRIORITY_UID_FILTER_MAX_UID)
+		return false;
+
+	/* no need rcu_read_lock() and rcu_read_unlock() here as caller already holds it */
+	bitmap = rcu_dereference(priority_uid_filter_bitmap);
+	if (likely(bitmap)) {
+		if (test_bit(app_id - SUSFS_PRIORITY_UID_FILTER_MIN_UID, bitmap->bits)) {
+			//SUSFS_LOGI("uid '%u' is filtered\n", uid);
+			return true;
+		}
+	}
+
+	return false;
+}
 
 /* susfs avc log spoofing */
 DEFINE_STATIC_KEY_FALSE(susfs_is_avc_log_spoofing_enabled);
@@ -1240,10 +1645,14 @@ void susfs_get_enabled_features(void __user **user_info) {
 	struct st_susfs_enabled_features *info = (struct st_susfs_enabled_features *)kzalloc(sizeof(struct st_susfs_enabled_features), GFP_KERNEL);
 	char *buf_ptr = NULL;
 	size_t copied_size = 0;
+	int err = 0;
 
 	if (!info) {
-		info->err = -ENOMEM;
-		goto out_copy_to_user;
+		err = -ENOMEM;
+		if (copy_to_user(&((struct st_susfs_enabled_features __user*)*user_info)->err, &err, sizeof(err)))
+			err = -EFAULT;
+		SUSFS_LOGI("CMD_SUSFS_SHOW_ENABLED_FEATURES -> ret: %d\n", err);
+		return;
 	}
 
 	if (copy_from_user(info, (struct st_susfs_enabled_features __user*)*user_info, sizeof(struct st_susfs_enabled_features))) {
@@ -1429,8 +1838,8 @@ static int watch_one_dir(struct watch_dir *wd)
  */
 static SUSFS_DECL_FSNOTIFY_OPS(susfs_handle_sdcard_inode_event)
 {
-	if (!file_name || strlen((const char *)file_name) != 7 ||
-	    memcmp(file_name, "Android", 7))
+	if (!file_name || susfs_fname_len(file_name) != 7 ||
+	    memcmp(susfs_fname_arg(file_name), "Android", 7))
 		return 0;
 
 	if (test_and_set_bit(0, &sdcard_cleanup_scheduled))
@@ -1450,39 +1859,19 @@ static const struct fsnotify_ops fsnotify_ops = {
 #endif
 };
 
-static void __maybe_unused m_free(struct fsnotify_mark *m)
-{
-	if (m) {
-		kfree(m);
-	}
-}
-
 static int add_mark_on_inode(struct inode *inode, u32 mask,
 								struct fsnotify_mark **out)
 {
 	struct fsnotify_mark *m;
-	int ret;
 
 	m = kzalloc(sizeof(*m), GFP_KERNEL);
 	if (!m)
 		return -ENOMEM;
 
-/* From KernelSU */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0)
 	fsnotify_init_mark(m, g);
 	m->mask = mask;
-	ret = fsnotify_add_inode_mark(m, inode, 0);
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
-	fsnotify_init_mark(m, g);
-	m->mask = mask;
-	ret = fsnotify_add_mark(m, inode, NULL, 0);
-#else
-	fsnotify_init_mark(m, m_free);
-	m->mask = mask;
-	ret = fsnotify_add_mark(m, g, inode, NULL, 0);
-#endif
 
-	if (ret) {
+	if (fsnotify_add_inode_mark(m, inode, 0)) {
 		fsnotify_put_mark(m);
 		return -EINVAL;
 	}

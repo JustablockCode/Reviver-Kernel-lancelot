@@ -1,163 +1,87 @@
 import asyncio
-import os,re
-import random
-import sys,json
-from telegram import Bot,InputMediaDocument
-from telegram.error import RetryAfter
-from telegram.constants import ParseMode
+import os
+import sys
+from telethon import TelegramClient
+import json
+
+API_ID = 611335
+API_HASH = "d524b414d21f4d37f08684c1df41ac9c"
+
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 MESSAGE_THREAD_ID = os.environ.get("MESSAGE_THREAD_ID")
-DEVELOPING_THREAD_ID = os.environ.get("DEVELOPING_THREAD_ID")
-RUN_URL = os.environ.get("RUN_URL")
 TITLE = os.environ.get("TITLE")
 VERSION = os.environ.get("VERSION")
 BRANCH = os.environ.get("BRANCH")
+RUN_URL = os.environ.get("RUN_URL")
 
-API_ID = 21724
-API_HASH = "3e0cb5efcd52300aec5994fdfc5bdc16"
+GITHUB_EVENT = json.loads(os.environ.get("GITHUB_EVENT"))
 
-GITHUB_EVENT = json.loads(open(os.environ.get("GITHUB_EVENT_PATH"), "r").read())
-GITHUB_REF_TYPE = os.environ.get("GITHUB_REF_TYPE")
-
-commit_message = ''
-commit_line = ''
-try:
-    if 'commits' in GITHUB_EVENT:
-        commits = GITHUB_EVENT['commits']
-        commit_message = ''
-        i = len(commits)
-        for commit in commits[::-1]:
-            msg_line = commit['message'].split('\n')
-            msg = commit['message'].strip()
-            if len(msg) > 200:
-                msg = msg[:197] + '...'
-            msg += ' by ' + commit['author']['username']
-            if i > 1:
-                msg += '\n------'
-            if len(msg) + 1 + len(commit_message) > 600:
-                commit_message = f'{commit_message}\n(other {i} commits)'
-                break
-            else:
-                commit_message = f'{msg}\n{commit_message}\n'
-            i -= 1
-        commit_message = f'{commit_message.strip()}'
-        last_commit = commits[-1]
-
-    elif 'head_commit' in GITHUB_EVENT:
-        msg = GITHUB_EVENT["head_commit"]["message"]
-        if len(msg) > 200:
-            msg = msg[:197] + '...'
-        commit_message = f'{msg.strip()}'
-    else:
-        commit_message = f'(no commit message)'
-except IndexError:
-    print("[!] IndexError Found! try another way to get commit...")
-    try:
-        if 'head_commit' in GITHUB_EVENT:
-            msg = GITHUB_EVENT["head_commit"]["message"]
-            if len(msg) > 200:
-                msg = msg[:197] + '...'
-            commit_message = f'{msg.strip()}'
-    except:
-        from traceback import print_exc
-        print_exc()
-        commit_message = f'(no commit message)'
-except:
-    from traceback import print_exc
-    print_exc()
-    commit_message = f'(Unexpected Error! So no commit message)'
+if 'commits' in GITHUB_EVENT:
+    commits = GITHUB_EVENT['commits']
+    commit_message = ''
+    i = len(commits)
+    for commit in commits[::-1]:
+        msg_line = commit['message'].split('\n')
+        msg = msg_line[0].strip()
+        if len(msg_line) > 1:
+            msg += ' [..]'
+        if len(msg) > 100:
+            msg = msg[:97] + '...'
+        msg += ' by ' + commit['author']['username']
+        if len(msg) + 1 + len(commit_message) > 600:
+            commit_message = f'(other {i} commits)\n{commit_message}'
+            break
+        else:
+            commit_message = f'{msg}\n{commit_message}'
+        i -= 1
+    commit_message = f'```\n{commit_message.strip()}\n```'
+elif 'head_commit' in GITHUB_EVENT:
+    msg = GITHUB_EVENT["head_commt"]["msg"]
+    if len(msg) > 256:
+        msg = msg[:253] + '...'
+    commit_message = f'```\n{msg.strip()}\n```\n'
+else:
+    commit_message = ''
 
 if 'compare' in GITHUB_EVENT:
     commit_url = GITHUB_EVENT['compare']
-    commit_line = '<a href="' + commit_url + '">Compare</a>'
+    commit_line = '[Compare](' + commit_url + ')\n'
 elif 'head_commit' in GITHUB_EVENT:
     commit_url = GITHUB_EVENT['head_commit']['url']
-    commit_line = '<a href="' + commit_url + '">Commit</a>'
+    commit_line = '[Commit](' + commit_url + ')\n'
 else:
     commit_line = ''
 
+
 MSG_TEMPLATE = """
-<b>{title}</b>
+**{title}**
 Branch: {branch}
 #ci_{version}
-<pre>
-{commit_message}
-</pre>
-{commit_line}
-<a href="{run_url}">Workflow run</a>
-<a href="https://nightly.link/Baka-SU/BakaSU/workflows/build-manager/main/Manager-debug.zip">Get latest main Debug build</a>
+{commit_message}{commit_url}[Workflow run]({run_url})
 """.strip()
 
-MAIN_UPDATED_MSG ="""
-main branch updated, manager in there may outdated 
-main 分支已更新，此 topic 的管理器可能已过时
-""".strip()
-
-def escape_telegram_html(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
-
-async def start_bot_api():
-    print("[+] Starting Telegram Bot API")
-    import subprocess
-    global process
-    process = subprocess.Popen(["./telegram-bot-api-binary", f"--api-id={API_ID}", f"--api-hash={API_HASH}", "--local"])
-    
-
-async def wait_for_bot_api():
-    import httpx
-    await start_bot_api()
-    print("[+] Waiting for Telegram Bot API to start...")
-    async with httpx.AsyncClient() as client:
-        for count in range(30):
-            try:
-                response = await client.get(f"http://127.0.0.1:8081/bot{BOT_TOKEN}/getMe")
-                if response.status_code < 500:
-                    print("[+] Telegram Bot API started")
-                    break
-            except:
-                #print(process.stdout.readline())
-                print("Still wait..." + str(count))
-                await asyncio.sleep(1)
-                pass
-        else:
-            process.kill()
-            print("[-] Failed to start Telegram Bot API")
-            exit(1)
-        return 
-        
 
 def get_caption():
     msg = MSG_TEMPLATE.format(
         title=TITLE,
         branch=BRANCH,
         version=VERSION,
-        commit_message=escape_telegram_html(commit_message),
-        commit_line=commit_line,
+        commit_message=commit_message,
+        commit_url=commit_line,
         run_url=RUN_URL,
     )
-    if BRANCH != "main" and GITHUB_REF_TYPE != "tag":
-        msg += "\n⚠️⚠️<b>DEV VERSION, PLEASE BACKUP BEFORE INSTALLATION</b>⚠️⚠️"
-        msg += "\n⚠️⚠️<b>测试版，安装前请备份</b>⚠️⚠️"
+    if len(msg) > 1024:
+        msg = COMMIT_URL
+    if BRANCH == "dev":
+        msg += "\n⚠️⚠️**DEV VERSION, PLEASE BACKUP BEFORE INSTALLATION**⚠️⚠️"
+        msg += "\n⚠️⚠️**测试版，安装前请备份**⚠️⚠️"
     return msg
 
-def get_caption_for_debug():
-    msg = MSG_TEMPLATE.format(
-        title=f"{TITLE}-Debug",
-        branch=BRANCH,
-        version=VERSION,
-        commit_message=escape_telegram_html(commit_message),
-        commit_line=commit_line,
-        run_url=RUN_URL,
-    )
-    if BRANCH != "main" and GITHUB_REF_TYPE != "tag":
-        msg += "\n⚠️⚠️<b>DEV VERSION, PLEASE BACKUP BEFORE INSTALLATION</b>⚠️⚠️"
-        msg += "\n⚠️⚠️<b>测试版，安装前请备份</b>⚠️⚠️"
-    return msg
 
 def check_environ():
-    global CHAT_ID, MESSAGE_THREAD_ID, DEVELOPING_THREAD_ID
+    global CHAT_ID, MESSAGE_THREAD_ID
     if BOT_TOKEN is None:
         print("[-] Invalid BOT_TOKEN")
         exit(1)
@@ -181,93 +105,37 @@ def check_environ():
     if BRANCH is None:
         print("[-] Invalid BRANCH")
         exit(1)
-    if MESSAGE_THREAD_ID and MESSAGE_THREAD_ID != "":
+    if MESSAGE_THREAD_ID is not None and MESSAGE_THREAD_ID != "":
         try:
             MESSAGE_THREAD_ID = int(MESSAGE_THREAD_ID)
         except:
-            print("[-] Invalid MESSAGE_THREAD_ID")
+            print("[-] Invaild MESSAGE_THREAD_ID")
             exit(1)
     else:
         MESSAGE_THREAD_ID = None
-    if DEVELOPING_THREAD_ID and DEVELOPING_THREAD_ID != "":
-        try:
-            DEVELOPING_THREAD_ID = int(DEVELOPING_THREAD_ID)
-        except:
-            print("[-] Invalid DEVELOPING_THREAD_ID")
-            exit(1)
-    else:
-        DEVELOPING_THREAD_ID = None
-        
-async def send_message(bot: Bot, chat_id: int, text: str, message_thread_id=None):
-    try:
-        await asyncio.sleep(random.uniform(0.2, 0.8))
-        return await bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML, message_thread_id=message_thread_id,
-                                       read_timeout=350,write_timeout=350,connect_timeout=350,pool_timeout=350,disable_web_page_preview=True)
-    except RetryAfter as e:
-        print(f"[-] Hit Telegram flood limit, retrying after {e.retry_after} seconds...")
-        await asyncio.sleep(e.retry_after)
-        return await send_message(bot, chat_id, text, message_thread_id)
-    except:
-        raise
 
-async def send_media_group(bot: Bot, chat_id: int, media: list, message_thread_id=None):
-    try:
-        await asyncio.sleep(random.uniform(0.2, 0.8))
-        return await bot.send_media_group(chat_id=chat_id, media=media, message_thread_id=message_thread_id,
-                                       read_timeout=350,write_timeout=350,connect_timeout=350,pool_timeout=350)
-    except RetryAfter as e:
-        print(f"[-] Hit Telegram flood limit, retrying after {e.retry_after} seconds...")
-        await asyncio.sleep(e.retry_after)
-        return await send_media_group(bot, chat_id, media, message_thread_id)
-    except:
-        raise
 
 async def main():
     print("[+] Uploading to telegram")
     check_environ()
-    await wait_for_bot_api()
     files = sys.argv[1:]
     print("[+] Files:", files)
     if len(files) <= 0:
         print("[-] No files to upload")
         exit(1)
     print("[+] Logging in Telegram with bot")
-    no_caption=False
-    bot = Bot(token=BOT_TOKEN,base_url="http://127.0.0.1:8081/bot",base_file_url="http://127.0.0.1:8081/file/bot")
-    caption = get_caption()
-    caption_debug = get_caption_for_debug()
-    if len(caption) > 1024 or len(caption_debug) > 1024:
-        print("[-] Caption is too long,so it will be sent as a separate message without caption for files")
-        no_caption = True
-    upload_release_files = []
-
-    for index, file in enumerate(files):
-        if os.path.basename(file).find("debug") != -1:
-            # If the filename contains "debug", skip it.
-            continue
-        elif index == len(files) - 1:
-            # Only add caption to the last file
-            upload_release_files.append(InputMediaDocument(media=open(file, "rb"), filename=os.path.basename(file), caption=f"{caption if not no_caption else '<b>Release Manager</b>'}", parse_mode=ParseMode.HTML))
-            continue
-        upload_release_files.append(InputMediaDocument(media=open(file, "rb"), filename=os.path.basename(file)))
-
-    print("[+] Caption: ")
-    print("---")
-    print(caption)
-    print("---")
-    if TITLE.lower() == "spoofed-manager" and (BRANCH != "main" and GITHUB_REF_TYPE != "tag"):
-        print("[!] Spoofed Manager is not allowed to be uploaded for non-main branch")
-    else:
+    script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    session_dir = os.path.join(script_dir, "ksubot")
+    async with await TelegramClient(session=session_dir, api_id=API_ID, api_hash=API_HASH).start(bot_token=BOT_TOKEN) as bot:
+        caption = [""] * len(files)
+        caption[-1] = get_caption()
+        print("[+] Caption: ")
+        print("---")
+        print(caption)
+        print("---")
         print("[+] Sending")
-        if no_caption:
-            await send_message(bot=bot, chat_id=CHAT_ID, text=caption, message_thread_id=MESSAGE_THREAD_ID)
-        if len(upload_release_files) > 0:
-            await send_media_group(bot=bot, chat_id=CHAT_ID, media=upload_release_files, message_thread_id=MESSAGE_THREAD_ID)
-        if TITLE.lower() == "manager" and (BRANCH == "main" or GITHUB_REF_TYPE == "tag"):
-            print("[+] Sending main branch updated message")
-            await send_message(bot=bot,chat_id=CHAT_ID, text=MAIN_UPDATED_MSG, message_thread_id=DEVELOPING_THREAD_ID)
-    print("[+] Done!")
-    process.kill()
+        await bot.send_file(entity=CHAT_ID, file=files, caption=caption, reply_to=MESSAGE_THREAD_ID, parse_mode="markdown")
+        print("[+] Done!")
 
 if __name__ == "__main__":
     try:

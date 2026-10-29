@@ -2,14 +2,28 @@
 #define __KSU_H_KSUD
 
 #include <linux/compat.h>
-#include <asm/syscall.h>
+#include <linux/uaccess.h>
 
 #define KSUD_PATH "/data/adb/ksud"
 
 void ksu_ksud_init(void);
 void ksu_ksud_exit(void);
 
-#define MAX_ARG_STRINGS 0x7FFFFFFF
+void on_post_fs_data(void);
+void on_module_mounted(void);
+void on_boot_completed(void);
+
+bool ksu_is_safe_mode(void);
+
+int nuke_ext4_sysfs(const char *mnt);
+
+extern bool ksu_execveat_hook __read_mostly;
+extern bool ksu_vfs_read_hook __read_mostly;
+
+extern u32 ksu_file_sid;
+extern bool ksu_module_mounted;
+extern bool ksu_boot_completed;
+
 struct user_arg_ptr {
 #ifdef CONFIG_COMPAT
     bool is_compat;
@@ -22,12 +36,29 @@ struct user_arg_ptr {
     } ptr;
 };
 
-void ksu_handle_execveat_ksud(const char *filename, struct user_arg_ptr *argv, struct user_arg_ptr *envp, int *flags);
-void ksu_stop_ksud_execve_hook(void);
-#ifdef CONFIG_KSU_TRACEPOINT_HOOK
-void ksu_execve_hook_ksud(const struct pt_regs *regs);
-void ksu_execveat_hook_ksud(const struct pt_regs *regs);
+static inline const char __user *get_user_arg_ptr(struct user_arg_ptr argv, int nr)
+{
+    const char __user *native;
+
+#ifdef CONFIG_COMPAT
+    if (unlikely(argv.is_compat)) {
+        compat_uptr_t compat;
+
+        if (get_user(compat, argv.ptr.compat + nr))
+            return ERR_PTR(-EFAULT);
+
+        return compat_ptr(compat);
+    }
 #endif
-void ksu_stop_input_hook_runtime(void);
+
+    if (get_user(native, argv.ptr.native + nr))
+        return ERR_PTR(-EFAULT);
+
+    return native;
+}
+
+
+int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr, struct user_arg_ptr *argv,
+                             struct user_arg_ptr *envp, int *flags);
 
 #endif

@@ -2,20 +2,10 @@
 #define KSU_SUSFS_DEF_H
 
 #include <linux/bits.h>
-#include <linux/string.h>
-#include <linux/version.h> // We need check kernel version.
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+#include <linux/bitmap.h>
+#include <linux/version.h>
 #include <linux/cred.h>
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0)
-#define d_in_lookup(dentry) (0)
-#define d_lookup_done(dentry) do {} while (0)
-#endif // to support 4.4 and older kernel
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0)
-#define GFP_KERNEL_ACCOUNT GFP_KERNEL
-#endif // to support 4.4 and older kernel
+#include <linux/string.h>
 
 /********/
 /* ENUM */
@@ -45,6 +35,7 @@
 #define CMD_SUSFS_SUS_SU 0x60000 /* deprecated */
 #define CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING 0x60010
 #define CMD_SUSFS_ADD_SUS_MAP 0x60020
+#define CMD_SUSFS_SET_PRIORITY_UID_FILTER 0x60030
 
 #define SUSFS_MAX_LEN_PATHNAME 256 // 256 should address many paths already unless you are doing some strange experimental stuff, then set your own desired length
 #define SUSFS_FAKE_CMDLINE_OR_BOOTCONFIG_SIZE 8192 // 8192 is enough I guess
@@ -66,7 +57,7 @@
 /*
  * mnt->mnt.mnt_flags => An 'int' primitive storing flag 'VFSMOUNT_MNT_FLAGS_'
  * task_struct->thread_info.flags => storing flag 'TIF_' which is an unsigned long primitive :D
- * inode->i_state => A 'unsigned long' type storing flag 'AS_FLAGS_', bit 1 to 31 is not usable since 6.12
+ * inode->i_mapping->flags => An 'unsigned long' primitive storing flag 'AS_FLAGS_', bit 1 to 31 is not usable since 6.12
  * nd->state => storing flag 'ND_STATE_'
  * nd->flags => storing flag 'ND_FLAGS_'
  * statx request_mark => storing flag 'STATX_'
@@ -91,28 +82,18 @@
 #define STATX_SUS_KSTAT 0x10000000U
 #define STATX_SUS_KSTAT_FUSE 0x20000000U
 
-static inline bool susfs_starts_with(const char *str, const char *prefix) {
-	while (*prefix) {
-		if (*str++ != *prefix++)
-			return false;
-	}
-	return true;
-}
-
-static inline bool susfs_ends_with(const char *str, const char *suffix) {
-	size_t str_len, suffix_len;
-
-	if (!str || !suffix)
-		return false;
-
-	str_len = strlen(str);
-	suffix_len = strlen(suffix);
-
-	if (suffix_len > str_len)
-		return false;
-
-	return !strcmp(str + str_len - suffix_len, suffix);
-}
+/*****************************************/
+/* getpriority uid filter (bitmap)       */
+/*****************************************/
+/* The uids that are hidden from the apps that abuse the getpriority syscall
+ * to find out the existing uids. Only the uids within the app uid range
+ * (10000 - 19999) are supported.
+ */
+#define SUSFS_PRIORITY_UID_FILTER_MIN_UID 10000
+#define SUSFS_PRIORITY_UID_FILTER_MAX_UID 19999
+#define SUSFS_PRIORITY_UID_FILTER_UID_NUM (SUSFS_PRIORITY_UID_FILTER_MAX_UID - SUSFS_PRIORITY_UID_FILTER_MIN_UID + 1)
+#define SUSFS_PRIORITY_UID_FILTER_BITMAP_LEN BITS_TO_LONGS(SUSFS_PRIORITY_UID_FILTER_UID_NUM)
+#define SUSFS_APP_STR_BUF_SIZE 65535
 
 /* From KernelSU */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0)
@@ -154,6 +135,29 @@ struct fsnotify_mark *vfsmount_mark, u32 mask, void *data,    \
 int data_type, susfs_fname_t file_name, u32 cookie)
 #endif
 
+static inline bool susfs_starts_with(const char *str, const char *prefix) {
+    while (*prefix) {
+        if (*str++ != *prefix++)
+            return false;
+    }
+    return true;
+}
+
+static inline bool susfs_ends_with(const char *str, const char *suffix) {
+	size_t str_len, suffix_len;
+
+	if (!str || !suffix)
+		return false;
+
+	str_len = strlen(str);
+	suffix_len = strlen(suffix);
+
+	if (suffix_len > str_len)
+		return false;
+
+	return !strcmp(str + str_len - suffix_len, suffix);
+}
+
 static inline bool susfs_is_current_app_uid(void) {
 	return ((current_uid().val % 100000) >= 10000);
 }
@@ -184,11 +188,7 @@ static inline void susfs_clear_current_proc_umounted_for_zygote_next(void) {
 
 static inline bool susfs_is_current_proc_umounted_app(void) {
 	return (likely(test_thread_flag(TIF_PROC_UMOUNTED)) &&
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
-			__kuid_val(current_uid()) >= 10000);
-#else
 			current_uid().val >= 10000);
-#endif
 }
 
 static inline bool susfs_is_current_proc_no_su(void) {
@@ -205,15 +205,15 @@ static inline void susfs_clear_current_proc_no_su(void) {
 
 #define SUSFS_IS_INODE_SUS_MAP(inode) \
 		inode && inode->i_mapping && \
-		unlikely(test_bit(AS_FLAGS_SUS_MAP, &inode->i_state)) && \
+		unlikely(test_bit(AS_FLAGS_SUS_MAP, &inode->i_mapping->flags)) && \
 		susfs_is_current_proc_umounted_app()
 
 #define SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(inode) \
 		inode && inode->i_mapping && \
-		unlikely(test_bit(AS_FLAGS_OPEN_REDIRECT, &inode->i_state))
+		unlikely(test_bit(AS_FLAGS_OPEN_REDIRECT, &inode->i_mapping->flags))
 
 #define SUSFS_IS_INODE_OPEN_REDIRECT(inode) \
 		inode && inode->i_mapping && \
-		unlikely(test_bit(AS_FLAGS_OPEN_REDIRECT, &inode->i_state)) && \
+		unlikely(test_bit(AS_FLAGS_OPEN_REDIRECT, &inode->i_mapping->flags)) && \
 		susfs_is_current_proc_umounted_app()
 #endif // #ifndef KSU_SUSFS_DEF_H

@@ -7,7 +7,6 @@ pluginManagement {
         gradlePluginPortal()
         google()
         mavenCentral()
-        maven("https://jitpack.io")
     }
 }
 
@@ -19,7 +18,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BakaSU"
+rootProject.name = "KernelSU"
 include(":app")
-include(":baselineprofile")
-include(":lint-rules")

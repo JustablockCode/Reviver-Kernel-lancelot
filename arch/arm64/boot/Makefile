@@ -18,6 +18,23 @@ OBJCOPYFLAGS_Image :=-O binary -R .note -R .note.gnu.build-id -R .comment -S
 
 targets := Image Image.bz2 Image.gz Image.lz4 Image.lzma Image.lzo
 
+# The SukiSU extension is a control interface. CONFIG_KPM also needs the real
+# KernelPatch loader embedded before compression and DTB concatenation.
+ifeq ($(CONFIG_KPM),y)
+targets += Image.kpm
+reviver_kpm_src := $(shell find $(srctree)/KernelPatch -type f)
+quiet_cmd_reviver_kpm = KPM     $@
+      cmd_reviver_kpm = bash $(srctree)/scripts/reviver/patch-kpm.sh \
+	$(srctree) $(obj)/Image $@ $(objtree)/reviver-kpm
+
+$(obj)/Image.kpm: $(obj)/Image $(reviver_kpm_src) $(srctree)/scripts/reviver/patch-kpm.sh FORCE
+	$(call if_changed,reviver_kpm)
+
+reviver_compression_image := $(obj)/Image.kpm
+else
+reviver_compression_image := $(obj)/Image
+endif
+
 DTB_NAMES := $(subst $\",,$(CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES))
 ifneq ($(DTB_NAMES),)
 DTB_LIST := $(addsuffix .dtb,$(DTB_NAMES))
@@ -43,7 +60,7 @@ $(obj)/Image.bz2: $(obj)/Image FORCE
 $(obj)/Image-dtb: $(obj)/Image $(DTB_OBJS) FORCE
 	$(call if_changed,cat)
 
-$(obj)/Image.gz: $(obj)/Image FORCE
+$(obj)/Image.gz: $(reviver_compression_image) FORCE
 	$(call if_changed,gzip)
 
 $(obj)/Image.lz4: $(obj)/Image FORCE

@@ -1,6 +1,11 @@
 .idea
+AGENTS.md
 .DS_Store
-build.sh
-*.code-workspace
-.trae
+/target
+.cargo/config.toml
+__pycache__
+/dist
+/repack-config.json
 /userspace/ksud/.lkm_image_bootstrap.o
+/.cursor
+/.claude

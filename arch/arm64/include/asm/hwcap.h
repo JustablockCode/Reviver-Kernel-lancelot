@@ -45,6 +45,7 @@
  * instruction set this cpu supports.
  */
 #define ELF_HWCAP		(elf_hwcap)
+#define ELF_HWCAP2		(elf_hwcap2)
 
 #ifdef CONFIG_COMPAT
 #define COMPAT_ELF_HWCAP	(compat_elf_hwcap)
@@ -61,5 +62,6 @@ enum {
 };
 
 extern unsigned long elf_hwcap;
+extern unsigned long elf_hwcap2;
 #endif
 #endif
