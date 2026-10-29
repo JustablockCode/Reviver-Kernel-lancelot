@@ -15,6 +15,10 @@ X86_LD ?= ld
 X86_OBJCOPY ?= objcopy
 
 CFLAGS += -Wall -fno-builtin -std=gnu11 -nostdinc -mgeneral-regs-only -ffixed-x18
+CFLAGS += -ffreestanding -fno-stack-protector -fno-pic -fno-pie
+# kptools enters the raw payload at +4 KiB. Orphan unwind sections must not
+# displace .setup.text from that fixed offset when building with Clang.
+CFLAGS += -fno-unwind-tables -fno-asynchronous-unwind-tables
 CFLAGS += -g
 
 # kpimg-x86 links at 0 and runs from wherever it was injected, and the linker
@@ -111,6 +115,11 @@ base/sha256.x86.o: base/sha256.c
 
 base/setup.o: ../version
 x86/setup.x86.o: ../version
+
+# This startup code is relocated into a single 4 KiB mapping window. Clang's
+# -O2 inlining exceeds that limit; optimize only this translation unit for size.
+base/map.o: base/map.c Makefile
+	${CC} $(CFLAGS) $(INCLUDE) -c -Os -o $@ $<
 
 %.o: %.c
 	${CC} $(CFLAGS) $(INCLUDE) -c -O2 -o $@ $<

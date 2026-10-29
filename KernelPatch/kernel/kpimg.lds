@@ -28,6 +28,8 @@ SECTIONS
         base/setup.o(.text)
         _setup_end = .;
     }
+    ASSERT(setup_entry == _setup_start + 0x1000,
+           "Setup entry must remain at raw payload offset 4 KiB!")
 
     . = ALIGN(16);
     .setup.map : {

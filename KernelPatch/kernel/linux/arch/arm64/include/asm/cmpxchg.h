@@ -63,7 +63,8 @@ static inline unsigned long __xchg(unsigned long x, volatile void *ptr, int size
                      : "memory");
         break;
     default:
-        // BUILD_BUG();
+        /* Only 1-, 2-, 4- and 8-byte atomics are supported. */
+        __builtin_trap();
     }
 
     smp_mb();
@@ -143,7 +144,8 @@ static inline unsigned long __cmpxchg(volatile void *ptr, unsigned long old, uns
         break;
 
     default:
-        // BUILD_BUG();
+        /* Only 1-, 2-, 4- and 8-byte atomics are supported. */
+        __builtin_trap();
     }
 
     return oldval;
