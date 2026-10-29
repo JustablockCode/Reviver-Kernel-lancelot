@@ -261,6 +261,10 @@ do_stop_machine:
 out_flush:
     smp_mb();
     reset_avc_cache();
+#ifdef CONFIG_KSU_SUSFS
+    /* Resolve domains after releasing policy_rwlock, just as on 5.10+. */
+    susfs_set_batch_sid();
+#endif
 #endif
 }
 
