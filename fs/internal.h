@@ -20,6 +20,17 @@ struct shrink_control;
 struct fs_context;
 
 /*
+ * statfs.c - collect the underlying filesystem state for SUSFS kstat entries.
+ */
+#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+struct dentry;
+struct kstatfs;
+struct vfsmount;
+int statfs_by_dentry_wrapper(struct dentry *dentry, struct kstatfs *buf);
+int calculate_f_flags_wrapper(struct vfsmount *mnt);
+#endif
+
+/*
  * block_dev.c
  */
 #ifdef CONFIG_BLOCK
