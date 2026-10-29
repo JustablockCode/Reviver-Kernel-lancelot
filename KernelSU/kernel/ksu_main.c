@@ -119,6 +119,7 @@
 #endif
 #include "feature/shell_su_adb_only.c"
 #include "feature/mount_hide.c"
+#include "feature/avc_spoof.c"
 #include "runtime/ksud.c"
 
 #include "sulog/event.c"
@@ -188,6 +189,10 @@ int __init kernelsu_init(void)
     ksu_shell_su_adb_only_init();
 
     ksu_selinux_hide_init();
+
+#ifdef CONFIG_KSU_SUSFS
+    ksu_avc_spoof_init();
+#endif
 
     ksu_kernel_umount_init();
 

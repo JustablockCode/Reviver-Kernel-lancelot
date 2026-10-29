@@ -241,6 +241,8 @@ bool susfs_is_priority_uid_filtered(uid_t uid);
 void susfs_parse_priority_app_strings(void);
 
 void susfs_set_avc_log_spoofing(void __user **user_info);
+bool susfs_get_avc_log_spoofing_enabled(void);
+void susfs_set_avc_log_spoofing_enabled(bool enabled);
 
 void susfs_get_enabled_features(void __user **user_info);
 void susfs_show_variant(void __user **user_info);

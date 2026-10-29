@@ -1601,6 +1601,22 @@ bool susfs_is_priority_uid_filtered(uid_t uid) {
 
 /* susfs avc log spoofing */
 DEFINE_STATIC_KEY_FALSE(susfs_is_avc_log_spoofing_enabled);
+static DEFINE_MUTEX(susfs_avc_log_mutex);
+
+bool susfs_get_avc_log_spoofing_enabled(void)
+{
+	return static_branch_unlikely(&susfs_is_avc_log_spoofing_enabled);
+}
+
+void susfs_set_avc_log_spoofing_enabled(bool enabled)
+{
+	mutex_lock(&susfs_avc_log_mutex);
+	if (enabled)
+		static_branch_enable(&susfs_is_avc_log_spoofing_enabled);
+	else
+		static_branch_disable(&susfs_is_avc_log_spoofing_enabled);
+	mutex_unlock(&susfs_avc_log_mutex);
+}
 
 void susfs_set_avc_log_spoofing(void __user **user_info) {
 	struct st_susfs_avc_log_spoofing info = {0};
@@ -1610,13 +1626,7 @@ void susfs_set_avc_log_spoofing(void __user **user_info) {
 		goto out_copy_to_user;
 	}
 
-	if (info.enabled) {
-		static_branch_enable(&susfs_is_avc_log_spoofing_enabled);
-		SUSFS_LOGI("enabling susfs_avc_log_spoofing\n");
-	} else {
-		static_branch_disable(&susfs_is_avc_log_spoofing_enabled);
-		SUSFS_LOGI("disabling susfs_avc_log_spoofing\n");
-	}
+	susfs_set_avc_log_spoofing_enabled(info.enabled != 0);
 
 	info.err = 0;
 out_copy_to_user:

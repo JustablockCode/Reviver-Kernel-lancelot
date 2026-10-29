@@ -1,8 +1,20 @@
-static const struct ksu_feature_handler *feature_handlers[KSU_FEATURE_MAX];
+/* Dense storage for the legacy range plus the sparse AVC feature ID. */
+#define KSU_FEATURE_SLOTS (KSU_FEATURE_MAX + 1)
+
+static u32 feature_slot(u32 id)
+{
+    if (id < KSU_FEATURE_MAX)
+        return id;
+    if (id == KSU_FEATURE_AVC_SPOOF)
+        return KSU_FEATURE_MAX;
+    return KSU_FEATURE_SLOTS;
+}
+
+static const struct ksu_feature_handler *feature_handlers[KSU_FEATURE_SLOTS];
 
 static DEFINE_MUTEX(feature_mutex);
 
-static const char *const feature_names[KSU_FEATURE_MAX] = {
+static const char *const feature_names[KSU_FEATURE_SLOTS] = {
     [KSU_FEATURE_SU_COMPAT] = "su_compat",
     [KSU_FEATURE_KERNEL_UMOUNT] = "kernel_umount",
     [KSU_FEATURE_SULOG] = "sulog",
@@ -10,24 +22,26 @@ static const char *const feature_names[KSU_FEATURE_MAX] = {
     [KSU_FEATURE_SELINUX_HIDE] = "selinux_hide",
     [KSU_FEATURE_SHELL_SU_ADB_ONLY] = "shell_su_adb_only",
     [KSU_FEATURE_MOUNT_HIDE] = "mount_hide",
+    [KSU_FEATURE_MAX] = "avc_spoof",
 };
 
 // Features forced by boot config. Written only while parsing module params
 // (before kernelsu_init), read-only afterwards.
-static u64 forced_values[KSU_FEATURE_MAX];
-static DECLARE_BITMAP(forced_mask, KSU_FEATURE_MAX);
+static u64 forced_values[KSU_FEATURE_SLOTS];
+static DECLARE_BITMAP(forced_mask, KSU_FEATURE_SLOTS);
 // Forced features whose value has not been applied successfully yet
-static DECLARE_BITMAP(forced_pending, KSU_FEATURE_MAX);
+static DECLARE_BITMAP(forced_pending, KSU_FEATURE_SLOTS);
 
 static int parse_feature_id(const char *name, u32 *id)
 {
     u32 i;
 
     if (!kstrtou32(name, 10, id)) {
-        return *id < KSU_FEATURE_MAX ? 0 : -EINVAL;
+        *id = feature_slot(*id);
+        return *id < KSU_FEATURE_SLOTS ? 0 : -EINVAL;
     }
 
-    for (i = 0; i < KSU_FEATURE_MAX; i++) {
+    for (i = 0; i < KSU_FEATURE_SLOTS; i++) {
         if (feature_names[i] && !strcmp(name, feature_names[i])) {
             *id = i;
             return 0;
@@ -95,12 +109,15 @@ module_param_cb(force_feature, &force_feature_param_ops, NULL, 0);
 
 int __init ksu_register_feature_handler(const struct ksu_feature_handler *handler)
 {
+    u32 slot;
+
     if (!handler) {
         pr_err("feature: register handler is NULL\n");
         return -EINVAL;
     }
 
-    if (handler->feature_id >= KSU_FEATURE_MAX) {
+    slot = feature_slot(handler->feature_id);
+    if (slot >= KSU_FEATURE_SLOTS) {
         pr_err("feature: invalid feature_id %u\n", handler->feature_id);
         return -EINVAL;
     }
@@ -112,11 +129,11 @@ int __init ksu_register_feature_handler(const struct ksu_feature_handler *handle
 
     mutex_lock(&feature_mutex);
 
-    if (feature_handlers[handler->feature_id]) {
+    if (feature_handlers[slot]) {
         pr_warn("feature: handler for %u already registered, overwriting\n", handler->feature_id);
     }
 
-    feature_handlers[handler->feature_id] = handler;
+    feature_handlers[slot] = handler;
 
     pr_info("feature: registered handler for %s (id=%u)\n", handler->name ? handler->name : "unknown",
             handler->feature_id);
@@ -129,7 +146,8 @@ int ksu_unregister_feature_handler(u32 feature_id)
 {
     int ret = 0;
 
-    if (feature_id >= KSU_FEATURE_MAX) {
+    feature_id = feature_slot(feature_id);
+    if (feature_id >= KSU_FEATURE_SLOTS) {
         pr_err("feature: invalid feature_id %u\n", feature_id);
         return -EINVAL;
     }
@@ -156,7 +174,8 @@ int ksu_get_feature(u32 feature_id, u64 *value, bool *supported)
     int ret = 0;
     const struct ksu_feature_handler *handler;
 
-    if (feature_id >= KSU_FEATURE_MAX) {
+    feature_id = feature_slot(feature_id);
+    if (feature_id >= KSU_FEATURE_SLOTS) {
         pr_err("feature: invalid feature_id %u\n", feature_id);
         return -EINVAL;
     }
@@ -200,7 +219,8 @@ int ksu_set_feature(u32 feature_id, u64 value)
     int ret = 0;
     const struct ksu_feature_handler *handler;
 
-    if (feature_id >= KSU_FEATURE_MAX) {
+    feature_id = feature_slot(feature_id);
+    if (feature_id >= KSU_FEATURE_SLOTS) {
         pr_err("feature: invalid feature_id %u\n", feature_id);
         return -EINVAL;
     }
@@ -238,7 +258,8 @@ out:
 
 bool ksu_feature_is_forced(u32 feature_id)
 {
-    return feature_id < KSU_FEATURE_MAX && test_bit(feature_id, forced_mask);
+    feature_id = feature_slot(feature_id);
+    return feature_id < KSU_FEATURE_SLOTS && test_bit(feature_id, forced_mask);
 }
 
 void ksu_feature_apply_forced(void)
@@ -249,7 +270,7 @@ void ksu_feature_apply_forced(void)
 
     mutex_lock(&feature_mutex);
 
-    for_each_set_bit (id, forced_pending, KSU_FEATURE_MAX) {
+    for_each_set_bit (id, forced_pending, KSU_FEATURE_SLOTS) {
         handler = feature_handlers[id];
         if (!handler || !handler->set_handler) {
             continue;
@@ -272,7 +293,7 @@ void __init ksu_feature_init(void)
 {
     int i;
 
-    for (i = 0; i < KSU_FEATURE_MAX; i++) {
+    for (i = 0; i < KSU_FEATURE_SLOTS; i++) {
         feature_handlers[i] = NULL;
     }
 
@@ -285,7 +306,7 @@ void __exit ksu_feature_exit(void)
 
     mutex_lock(&feature_mutex);
 
-    for (i = 0; i < KSU_FEATURE_MAX; i++) {
+    for (i = 0; i < KSU_FEATURE_SLOTS; i++) {
         feature_handlers[i] = NULL;
     }
 

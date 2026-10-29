@@ -16,7 +16,10 @@ enum ksu_feature_id {
      */
     KSU_FEATURE_MOUNT_HIDE = 16,
 
-    KSU_FEATURE_MAX
+    KSU_FEATURE_MAX,
+
+    /* Manager/userspace ABI: keep sparse feature IDs out of dense arrays. */
+    KSU_FEATURE_AVC_SPOOF = 10003,
 };
 
 #endif
