@@ -10,4 +10,5 @@ CPU spoofing adaptations, preinit ownership/build fixes and UAPI alignment.
 See `../Documentation/reviver/sukisu-integration.md` and
 `../scripts/reviver/source-lock.json`. Do not run setup.sh over this snapshot.
 
-No migration build or runtime validation has been performed yet.
+A clean kernel/KPM/preinit build and ZIP packaging passed at source commit
+88ec3e9dd713; device/runtime and manager-build validation remain outstanding.
