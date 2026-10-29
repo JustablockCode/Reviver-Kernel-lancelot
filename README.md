@@ -1,45 +1,64 @@
 # Reviver Kernel
 
-Custom Linux 4.19.325 kernel for **Xiaomi Redmi 9 / lancelot** (MediaTek MT6768 family, ARM64, non-GKI).
+Custom 4.19 kernel for the **Xiaomi Redmi 9 / lancelot**.
 
-## Features
+Built with **BakaSU** (formerly ReSukiSU) and **SUSFS** support.
 
-- SukiSU Ultra with KPM support
-- SUSFS v2.3.0, backported for this 4.19 tree
-- NoMount v20
-- WireGuard
-- SELinux Enforcing
-- Dated kernel version: `4.19.325-reviver-YYYYMMDD`
+---
 
-## SukiSU Ultra Manager
+## ⚠️ Disclaimer
 
-Get the manager from the official [SukiSU Ultra releases](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases).
+> This kernel is provided as-is.
+> Flashing a custom kernel can cause bootloops, data loss, or other issues.
+> **Make sure you have a working recovery and a backup before flashing.**
 
-## Build and install
+**Supported device:** Xiaomi Redmi 9 / lancelot
 
-This repository is the `kernel/` directory in the Reviver workspace. The sibling
-`clang/` toolchain and `AnyKernel3/` installer are required by the workspace
-`build.sh` launcher. Run `./build.sh` from the workspace to build and package a
-flashable ZIP, then install that ZIP from recovery and reboot.
+**Android:** Only tested on **Android 13** and **Android 16** S vendor. Other Android versions may not work correctly.
 
-The date in the kernel version is set automatically by `build.sh`.
-See [the agent guide](AGENTS.md) for the layout and incremental build commands.
+---
 
-## Device validation
+## ✨ Features
 
-The SukiSU/KPM integration boots LineageOS 23.2 (Android 16) on the test lancelot
-with SELinux enforcing. Root access, all six extension capability queries,
-KPM backend queries, SUSFS queries and the NoMount version interface were checked.
-Individual third-party modules and every hardware function have not been tested.
-See [the integration notes](Documentation/reviver/sukisu-integration.md) for pins
-and [device verification](Documentation/reviver/device-validation-20261029.md)
-for the exact checks and remaining limits.
+* BakaSU support (rebranded from ReSukiSU)
+* SUSFS v2.3.0-R28 support
+* SELinux Enforcing
+* Linux 4.19.325
+* NoMount
+* WireGuard
+* More later...
 
-## Credits
+---
 
-- SukiSU Ultra and KernelSU contributors
-- SUSFS contributors
-- KernelPatch contributors
-- NoMount and WireGuard contributors
-- Linux kernel contributors
-- mt6768-S and contributors for the upstream kernel source
+## 📥 Downloads
+
+### ⚠️ Important
+
+This kernel requires a specific build of the **BakaSU Manager** that matches its drivers. The standard manager from the BakaSU releases may not work. Download the correct manager build from the [Releases](https://github.com/JustablockCode/Reviver-Kernel-lancelot/releases) page.
+
+### Kernel Releases
+
+Check the [Releases](https://github.com/JustablockCode/Reviver-Kernel-lancelot/releases) page for downloadable ZIPs.
+
+---
+
+## 🔧 Installation
+
+1. Download the latest kernel ZIP from Releases.
+2. Boot into a custom recovery such as OrangeFox.
+3. Flash the ZIP.
+4. Boot into system.
+
+---
+
+## 📜 Credits
+
+* BakaSU (formerly ReSukiSU)
+* SUSFS
+* Linux Kernel
+* mt6768-S for the original kernel source and its contributors
+* You for using this kernel
+
+---
+
+Feel free to report bugs and suggest features.
