@@ -12,7 +12,12 @@
 
 #include "../sys.h"
 
+/* Older target UAPI trees keep the mount flags in linux/fs.h. */
+#if __has_include(<linux/mount.h>)
 #include <linux/mount.h>
+#else
+#include <linux/fs.h>
+#endif
 
 /*
  * int mount(const char *source, const char *target,

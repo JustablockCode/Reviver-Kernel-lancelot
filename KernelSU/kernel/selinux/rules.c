@@ -151,7 +151,9 @@ static int apply_kernelsu_rules_fn(void *ptr)
 
 void apply_kernelsu_rules(void)
 {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
     struct selinux_policy *pol, *old_pol;
+#endif
     struct policydb *db;
 
     if (!getenforce()) {
