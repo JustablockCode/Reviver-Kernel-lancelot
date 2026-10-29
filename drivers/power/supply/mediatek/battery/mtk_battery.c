@@ -1983,7 +1983,7 @@ int force_get_tbat_internal(bool update)
 					pre_fg_r_value,
 					pre_bat_temperature_val2);
 				/*pmic_auxadc_debug(1);*/
-				WARN_ON_ONCE(1);
+				//WARN_ON_ONCE(1);
 			}
 
 			pre_bat_temperature_volt_temp =

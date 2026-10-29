@@ -203,7 +203,8 @@ void reverse_charger(bool en)
 		msleep(1000);
 		if (is_otg == 1)
 			charger_dev_enable_otg(primary_charger, true);
-		tcpc->ops->set_role(tcpc, REVERSE_CHG_SOURCE);
+		if (tcpc)
+			tcpc->ops->set_role(tcpc, REVERSE_CHG_SOURCE);
 	} else {
 		// reverse_flage = 1;
 		// msleep(200);
@@ -212,7 +213,8 @@ void reverse_charger(bool en)
 		gpio_state = gpio_get_value(reverse_gpio);
 		pr_err("dhx-- dis short DM/DM gpio: %d\n", gpio_state);
 		charger_dev_enable_otg(primary_charger, false);
-		tcpc->ops->set_role(tcpc, REVERSE_CHG_DRP);
+		if (tcpc)
+			tcpc->ops->set_role(tcpc, REVERSE_CHG_DRP);
 		// if (is_otg == 1){
 		// 	pr_err("dhx---is otg\n");
 		// 	charger_dev_enable_otg(primary_charger, true);

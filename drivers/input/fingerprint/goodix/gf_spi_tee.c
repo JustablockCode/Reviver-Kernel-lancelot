@@ -435,7 +435,8 @@ static void gf_enable_irq(struct gf_device *gf_dev)
 		gf_debug(ERR_LOG, "%s, irq already enabled\n", __func__);
 	} else {
 		enable_irq(gf_dev->irq);
-		enable_irq_wake(gf_dev->irq);
+		if (!gf_dev->irq_wake_enabled && !enable_irq_wake(gf_dev->irq))
+			gf_dev->irq_wake_enabled = 1;
 		gf_dev->irq_count = 1;
 		gf_debug(DEBUG_LOG, "%s enable interrupt!\n", __func__);
 	}
@@ -446,7 +447,8 @@ static void gf_disable_irq(struct gf_device *gf_dev)
 	if (0 == gf_dev->irq_count) {
 		gf_debug(ERR_LOG, "%s, irq already disabled\n", __func__);
 	} else {
-		disable_irq_wake(gf_dev->irq);
+		if (gf_dev->irq_wake_enabled && !disable_irq_wake(gf_dev->irq))
+			gf_dev->irq_wake_enabled = 0;
 		disable_irq(gf_dev->irq);
 		gf_dev->irq_count = 0;
 		gf_debug(DEBUG_LOG, "%s disable interrupt!\n", __func__);
@@ -2166,8 +2168,6 @@ err_fw:
 	gf_spi_clk_enable(gf_dev, 0);
 	kfree(gf_dev->spi_buffer);
 err_freqbuff:
-
-err_buf:
 	mutex_destroy(&gf_dev->buf_lock);
 	mutex_destroy(&gf_dev->release_lock);
 	//spi_set_drvdata(spi, NULL);

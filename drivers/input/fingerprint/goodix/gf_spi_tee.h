@@ -203,6 +203,7 @@ struct gf_device {
 
 	u8 probe_finish;
 	u8 irq_count;
+	u8 irq_wake_enabled;
 
 	/* bit24-bit32 of signal count */
 	/* bit16-bit23 of event type, 1: key down; 2: key up; 3: fp data ready; 4: home key */
