@@ -826,15 +826,14 @@ void mcdi_cluster_tmr_en_set(bool en)
 
 static void mcdi_cluster_init(void)
 {
+	hrtimer_init(&mcdi_cluster.timer,
+			CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	mcdi_cluster.timer.function = mcdi_hrtimer_func;
 	mcdi_cluster.use_max_remain = true;
 	mcdi_cluster.owner = -1;
 
 	mcdi_cluster_chk_res_each_core_set(DEFAULT_CHK_RES_EACH_CORE);
 	mcdi_cluster_tmr_en_set(DEFAULT_TMR_EN);
-
-	hrtimer_init(&mcdi_cluster.timer,
-			CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 }
 
 void mcdi_governor_init(void)

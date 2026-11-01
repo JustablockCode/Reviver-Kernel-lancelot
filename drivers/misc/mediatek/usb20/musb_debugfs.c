@@ -10,6 +10,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/string.h>
+#include <linux/mutex.h>
 
 #include <linux/uaccess.h>
 
@@ -23,19 +24,37 @@
 #include <musb_debug.h>
 #include <musb_dr.h>
 
-#define PROC_DIR_MTK_USB "mtk_usb"
-#define PROC_FILE_REGDUMP "mtk_usb/regdump"
-#define PROC_FILE_TESTMODE "mtk_usb/testmode"
-#define PROC_FILE_REGW "mtk_usb/regw"
-#define PROC_FILE_REGR "mtk_usb/regr"
-#define PROC_FILE_SPEED "mtk_usb/speed"
+#define PROC_DIR_MTK_USB "mtk_musb"
+#define PROC_FILE_REGDUMP "mtk_musb/regdump"
+#define PROC_FILE_TESTMODE "mtk_musb/testmode"
+#define PROC_FILE_REGW "mtk_musb/regw"
+#define PROC_FILE_REGR "mtk_musb/regr"
+#define PROC_FILE_SPEED "mtk_musb/speed"
+
+/* Register the shared directory once, regardless of debug setup order. */
+static DEFINE_MUTEX(musb_proc_lock);
+static struct proc_dir_entry *musb_proc_dir;
+
+static int musb_create_proc_dir(void)
+{
+	int ret = 0;
+
+	mutex_lock(&musb_proc_lock);
+	if (!musb_proc_dir)
+		musb_proc_dir = proc_mkdir(PROC_DIR_MTK_USB, NULL);
+	if (!musb_proc_dir)
+		ret = -ENOMEM;
+	mutex_unlock(&musb_proc_lock);
+
+	return ret;
+}
 
 #define PROC_FILE_NUM 5
 static struct proc_dir_entry *proc_files[PROC_FILE_NUM] = {
 	NULL, NULL, NULL, NULL, NULL};
 
-#define PROC_FILE_MODE "mtk_usb/mode"
-#define PROC_FILE_VBUS "mtk_usb/vbus"
+#define PROC_FILE_MODE "mtk_musb/mode"
+#define PROC_FILE_VBUS "mtk_musb/vbus"
 
 #define PROC_FILE_DR_NUM 2
 static struct proc_dir_entry *proc_dr_files[PROC_FILE_DR_NUM] = {
@@ -598,7 +617,9 @@ int musb_init_debugfs(struct musb *musb)
 {
 	int ret, idx = 0;
 
-	proc_mkdir(PROC_DIR_MTK_USB, NULL);
+	ret = musb_create_proc_dir();
+	if (ret)
+		return ret;
 
 	proc_files[idx] = proc_create_data(PROC_FILE_REGDUMP, 0444,
 			NULL, &musb_regdump_fops, musb);
@@ -766,7 +787,8 @@ void musb_dr_debugfs_init(struct musb *musb)
 {
 	int idx = 0;
 
-	proc_mkdir(PROC_DIR_MTK_USB, NULL);
+	if (musb_create_proc_dir())
+		return;
 
 	proc_dr_files[idx++] = proc_create_data(PROC_FILE_MODE, 0644,
 			NULL, &musb_mode_fops, musb);

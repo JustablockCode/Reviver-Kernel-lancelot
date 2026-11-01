@@ -751,6 +751,8 @@ void set_mcdi_s_state(int state)
 
 static void mcdi_cluster_init(void)
 {
+	hrtimer_init(&mcdi_cluster.timer,
+			CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	mcdi_cluster.timer.function = mcdi_hrtimer_func;
 	mcdi_cluster.use_max_remain = true;
 	mcdi_cluster.owner = -1;
@@ -760,9 +762,6 @@ static void mcdi_cluster_init(void)
 		mcdi_cluster.tmr_en = true;
 	else
 		mcdi_cluster.tmr_en = false;
-
-	hrtimer_init(&mcdi_cluster.timer,
-			CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 }
 
 void mcdi_governor_init(void)

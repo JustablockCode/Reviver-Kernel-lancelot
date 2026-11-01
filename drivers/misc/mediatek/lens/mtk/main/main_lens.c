@@ -949,31 +949,46 @@ static struct platform_driver g_stAF_Driver = {
 #endif
 	} };
 
-static struct platform_device g_stAF_device = {
-	.name = PLATFORM_DRIVER_NAME, .id = 0, .dev = {} };
+static struct platform_device *g_stAF_device;
 
 static int __init MAINAF_i2C_init(void)
 {
+	int ret;
+	bool has_dt_node = false;
+#ifdef CONFIG_OF
+	struct device_node *np;
+
+	np = of_find_matching_node(NULL, gmainaf_of_device_id);
+	has_dt_node = np != NULL;
+	of_node_put(np);
+#endif
+
 #if I2C_CONFIG_SETTING == 1
 	i2c_register_board_info(LENS_I2C_BUSNUM, &kd_lens_dev, 1);
 #endif
 
-	if (platform_device_register(&g_stAF_device)) {
-		LOG_INF("failed to register AF driver\n");
-		return -ENODEV;
+	/* DT already supplies the platform device on lancelot. */
+	if (!has_dt_node) {
+		g_stAF_device = platform_device_register_simple(
+			PLATFORM_DRIVER_NAME, 0, NULL, 0);
+		if (IS_ERR(g_stAF_device))
+			return PTR_ERR(g_stAF_device);
 	}
 
-	if (platform_driver_register(&g_stAF_Driver)) {
-		LOG_INF("Failed to register AF driver\n");
-		return -ENODEV;
+	ret = platform_driver_register(&g_stAF_Driver);
+	if (ret && g_stAF_device) {
+		platform_device_unregister(g_stAF_device);
+		g_stAF_device = NULL;
 	}
 
-	return 0;
+	return ret;
 }
 
 static void __exit MAINAF_i2C_exit(void)
 {
 	platform_driver_unregister(&g_stAF_Driver);
+	if (g_stAF_device)
+		platform_device_unregister(g_stAF_device);
 }
 module_init(MAINAF_i2C_init);
 module_exit(MAINAF_i2C_exit);

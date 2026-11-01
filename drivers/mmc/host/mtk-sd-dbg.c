@@ -16,6 +16,7 @@
 #include <linux/slab.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
+#include <linux/mutex.h>
 #include <mt-plat/mtk_boot_common.h>
 #include <linux/io.h>
 #include <linux/scatterlist.h>
@@ -452,11 +453,20 @@ static const struct file_operations msdc_proc_fops = {
 #else
 #define PROC_PERM		0440
 #endif
+/* Separate from the legacy ComboA driver's /proc/msdc_debug interface. */
+static DEFINE_MUTEX(msdc_debug_proc_lock);
+static struct proc_dir_entry *msdc_debug_proc_entry;
+
 int msdc_debug_proc_init(void)
 {
 	kuid_t uid;
 	kgid_t gid;
 	struct proc_dir_entry *prEntry;
+	int ret = 0;
+
+	mutex_lock(&msdc_debug_proc_lock);
+	if (msdc_debug_proc_entry)
+		goto out;
 
 #ifdef USER_BUILD_KERNEL
 	enable_msdc_debug = 0;
@@ -467,15 +477,20 @@ int msdc_debug_proc_init(void)
 	uid = make_kuid(&init_user_ns, 0);
 	gid = make_kgid(&init_user_ns, 1001);
 
-	prEntry = proc_create("msdc_debug", PROC_PERM, NULL, &msdc_proc_fops);
+	prEntry = proc_create("mtk_sd_debug", PROC_PERM, NULL, &msdc_proc_fops);
 
-	if (prEntry)
+	if (prEntry) {
 		proc_set_user(prEntry, uid, gid);
-	else
-		pr_info("[%s]: failed to create /proc/msdc_debug\n",
+		msdc_debug_proc_entry = prEntry;
+	} else {
+		pr_info("[%s]: failed to create /proc/mtk_sd_debug\n",
 			__func__);
+		ret = -ENOMEM;
+	}
 
-	return 0;
+out:
+	mutex_unlock(&msdc_debug_proc_lock);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(msdc_debug_proc_init);
 

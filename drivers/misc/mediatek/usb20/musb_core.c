@@ -2913,7 +2913,6 @@ static struct platform_driver musb_driver = {
 	.remove = musb_remove,
 	.shutdown = musb_shutdown,
 };
-module_platform_driver(musb_driver);
 
 /*-------------------------------------------------------------------------*/
 
