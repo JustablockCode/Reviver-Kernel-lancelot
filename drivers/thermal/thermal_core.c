@@ -63,6 +63,7 @@ static bool power_off_triggered;
 static atomic_t switch_mode = ATOMIC_INIT(-1);
 static atomic_t temp_state = ATOMIC_INIT(0);
 static atomic_t lighter_event = ATOMIC_INIT(0);
+static DEFINE_MUTEX(thermal_message_lock);
 static char boost_buf[128];
 static struct device thermal_message_dev;
 const char *board_sensor = "VIRTUAL-SENSOR";
@@ -1240,16 +1241,28 @@ static ssize_t
 thermal_boost_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-       return snprintf(buf, PAGE_SIZE, boost_buf);
+	ssize_t ret;
+
+	mutex_lock(&thermal_message_lock);
+	ret = scnprintf(buf, PAGE_SIZE, "%s", boost_buf);
+	mutex_unlock(&thermal_message_lock);
+
+	return ret;
 }
 
 static ssize_t
 thermal_boost_store(struct device *dev,
 				struct device_attribute *attr, const char *buf, size_t len)
 {
-       int ret;
-       ret = snprintf(boost_buf, PAGE_SIZE, buf);
-       return len;
+	if (len >= sizeof(boost_buf))
+		return -E2BIG;
+
+	mutex_lock(&thermal_message_lock);
+	memcpy(boost_buf, buf, len);
+	boost_buf[len] = '\0';
+	mutex_unlock(&thermal_message_lock);
+
+	return len;
 }
 
 static DEVICE_ATTR(boost, 0644,
@@ -1357,16 +1370,28 @@ static ssize_t
 thermal_board_sensor_temp_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-       return snprintf(buf, PAGE_SIZE, board_sensor_temp);
+	ssize_t ret;
+
+	mutex_lock(&thermal_message_lock);
+	ret = scnprintf(buf, PAGE_SIZE, "%s", board_sensor_temp);
+	mutex_unlock(&thermal_message_lock);
+
+	return ret;
 }
 
 static ssize_t
 thermal_board_sensor_temp_store(struct device *dev,
 				struct device_attribute *attr, const char *buf, size_t len)
 {
-       snprintf(board_sensor_temp, PAGE_SIZE, buf);
+	if (len >= sizeof(board_sensor_temp))
+		return -E2BIG;
 
-       return len;
+	mutex_lock(&thermal_message_lock);
+	memcpy(board_sensor_temp, buf, len);
+	board_sensor_temp[len] = '\0';
+	mutex_unlock(&thermal_message_lock);
+
+	return len;
 }
 
 static DEVICE_ATTR(board_sensor_temp, 0664,

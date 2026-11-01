@@ -2782,6 +2782,14 @@ static int tscpu_thermal_probe(struct platform_device *dev)
 
 	tscpu_printk("thermal_prob\n");
 
+#if defined(CONFIG_MACH_MT6768)
+	err = tscpu_thermal_reset_init();
+	if (err) {
+		dev_err(&dev->dev, "Cannot initialize thermal reset routing: %d\n", err);
+		return err;
+	}
+#endif
+
 	/*
 	 *  default is dule mode(irq/reset),
 	 *  if not to config this and hot happen,

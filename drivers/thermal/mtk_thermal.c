@@ -790,7 +790,7 @@ static struct platform_driver mtk_thermal_driver = {
 	.probe = mtk_thermal_probe,
 	.remove = mtk_thermal_remove,
 	.driver = {
-		.name = "mtk-thermal",
+		.name = "mtk-thermal-generic",
 		.of_match_table = mtk_thermal_of_match,
 	},
 };

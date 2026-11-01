@@ -5,6 +5,8 @@
 #ifndef __MT6768_THERMAL_H__
 #define __MT6768_THERMAL_H__
 
+int tscpu_thermal_reset_init(void);
+
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/spinlock.h>

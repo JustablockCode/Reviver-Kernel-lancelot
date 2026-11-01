@@ -22,6 +22,9 @@
 #include <linux/slab.h>
 #include "mach/mtk_thermal.h"
 #include <linux/bug.h>
+#include <linux/mfd/syscon.h>
+#include <linux/regmap.h>
+#include <linux/mutex.h>
 
 #if defined(CONFIG_MTK_CLKMGR)
 #include <mach/mtk_clkmgr.h>
@@ -1416,11 +1419,76 @@ void tscpu_thermal_initial_all_tc(void)
 	}
 }
 
+/* MT6768 TOPRGU thermal request routing, matching the lancelot vendor WDT. */
+#define THERMAL_WDT_REQ_MODE	0x30
+#define THERMAL_WDT_REQ_IRQ_EN	0x34
+#define THERMAL_WDT_MODE_KEY	0x33000000
+#define THERMAL_WDT_IRQ_KEY	0x44000000
+#define THERMAL_WDT_KEY_MASK	0xff000000
+#define THERMAL_WDT_REQ_MASK	BIT(18)
+
+static struct regmap *thermal_wdt_regmap;
+static DEFINE_MUTEX(thermal_protect_lock);
+
+int tscpu_thermal_reset_init(void)
+{
+	struct regmap *map;
+
+	map = syscon_regmap_lookup_by_compatible("mediatek,mt6768-wdt");
+	if (IS_ERR(map))
+		return PTR_ERR(map);
+
+	thermal_wdt_regmap = map;
+	return 0;
+}
+
+static int tscpu_thermal_reset_enable(bool enable)
+{
+	unsigned int value;
+	int ret;
+
+	if (!thermal_wdt_regmap)
+		return -ENODEV;
+
+	/* Disable the request before reprogramming any thermal thresholds. */
+	if (!enable) {
+		ret = regmap_write_bits(thermal_wdt_regmap, THERMAL_WDT_REQ_MODE,
+			THERMAL_WDT_KEY_MASK | THERMAL_WDT_REQ_MASK,
+			THERMAL_WDT_MODE_KEY);
+		if (ret)
+			return ret;
+	}
+
+	/* Clear IRQ routing: the thermal request must cause a direct reset. */
+	ret = regmap_write_bits(thermal_wdt_regmap, THERMAL_WDT_REQ_IRQ_EN,
+		THERMAL_WDT_KEY_MASK | THERMAL_WDT_REQ_MASK, THERMAL_WDT_IRQ_KEY);
+	if (ret)
+		return ret;
+
+	if (enable) {
+		ret = regmap_write_bits(thermal_wdt_regmap, THERMAL_WDT_REQ_MODE,
+			THERMAL_WDT_KEY_MASK | THERMAL_WDT_REQ_MASK,
+			THERMAL_WDT_MODE_KEY | THERMAL_WDT_REQ_MASK);
+		if (ret)
+			return ret;
+	}
+
+	ret = regmap_read(thermal_wdt_regmap, THERMAL_WDT_REQ_MODE, &value);
+	if (ret)
+		return ret;
+	if (!!(value & THERMAL_WDT_REQ_MASK) != enable)
+		return -EIO;
+
+	ret = regmap_read(thermal_wdt_regmap, THERMAL_WDT_REQ_IRQ_EN, &value);
+	if (ret)
+		return ret;
+	return (value & THERMAL_WDT_REQ_MASK) ? -EIO : 0;
+}
+
 void tscpu_config_all_tc_hw_protect(int temperature, int temperature2)
 {
 	int i = 0;
-	int wd_api_ret;
-	struct wd_api *wd_api;
+	int ret;
 
 	tscpu_dprintk(
 	"%s,temperature=%d,temperature2=%d,\n", __func__,
@@ -1436,13 +1504,11 @@ void tscpu_config_all_tc_hw_protect(int temperature, int temperature2)
 	/* Thermal need to config to direct reset mode
 	 * this API provide by Weiqi Fu(RGU SW owner).
 	 */
-	wd_api_ret = get_wd_api(&wd_api);
-	if (wd_api_ret >= 0) {
-		wd_api->wd_thermal_direct_mode_config(WD_REQ_DIS,
-					WD_REQ_RST_MODE);	/* reset mode */
-	} else {
-		tscpu_warn("%d FAILED TO GET WD API\n", __LINE__);
-		WARN_ON_ONCE(1);
+	mutex_lock(&thermal_protect_lock);
+	ret = tscpu_thermal_reset_enable(false);
+	if (ret) {
+		pr_err("Thermal: cannot disable reset routing: %d\n", ret);
+		goto out_unlock;
 	}
 #if THERMAL_PERFORMANCE_PROFILE
 	do_gettimeofday(&end);
@@ -1463,13 +1529,12 @@ void tscpu_config_all_tc_hw_protect(int temperature, int temperature2)
 	/*Thermal need to config to direct reset mode
 	 *  this API provide by Weiqi Fu(RGU SW owner).
 	 */
-	if (wd_api_ret >= 0) {
-		wd_api->wd_thermal_direct_mode_config(WD_REQ_EN,
-					WD_REQ_RST_MODE);	/* reset mode */
-	} else {
-		tscpu_warn("%d FAILED TO GET WD API\n", __LINE__);
-		WARN_ON_ONCE(1);
-	}
+	ret = tscpu_thermal_reset_enable(true);
+	if (ret)
+		pr_crit("Thermal: cannot enable hardware reset protection: %d\n", ret);
+
+out_unlock:
+	mutex_unlock(&thermal_protect_lock);
 }
 
 void tscpu_reset_thermal(void)
