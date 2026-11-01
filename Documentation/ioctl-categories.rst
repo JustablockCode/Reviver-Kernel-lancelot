@@ -1,0 +1,80 @@
+.. SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
+
+========================
+Kbase IOCTLs categorised
+========================
+
+**Copyright:** \(C) 2025 ARM Limited. All rights reserved.
+
+..
+    This program is free software and is provided to you under the terms of the
+    GNU General Public License version 2 as published by the Free Software
+    Foundation, and any use by you of this program is subject to the terms
+    of such GNU license.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, you can access it online at
+    http://www.gnu.org/licenses/gpl-2.0.html.
+
+Restricted
+==========
+
+- KBASE_IOCTL_CINSTR_GWT_DUMP
+- KBASE_IOCTL_CINSTR_GWT_START
+- KBASE_IOCTL_CINSTR_GWT_STOP
+- KBASE_IOCTL_HWCNT_READER_SETUP
+- KBASE_IOCTL_HWCNT_SET
+- KBASE_IOCTL_MEM_PROFILE_ADD
+- KBASE_IOCTL_SET_LIMITED_CORE_COUNT
+- KBASE_IOCTL_TLSTREAM_STATS
+- KBASE_IOCTL_TLSTREAM_TEST
+- KBASE_IOCTL_VERSION_CHECK_RESERVED
+
+
+Instrumentation
+===============
+
+- KBASE_IOCTL_KINSTR_PRFCNT_CMD
+- KBASE_IOCTL_KINSTR_PRFCNT_ENUM_INFO
+- KBASE_IOCTL_KINSTR_PRFCNT_GET_SAMPLE
+- KBASE_IOCTL_KINSTR_PRFCNT_PUT_SAMPLE
+- KBASE_IOCTL_KINSTR_PRFCNT_SETUP
+- KBASE_IOCTL_TLSTREAM_ACQUIRE
+- KBASE_IOCTL_TLSTREAM_FLUSH
+
+Unprivileged
+============
+
+- KBASE_IOCTL_CONTEXT_PRIORITY_CHECK
+- KBASE_IOCTL_DISJOINT_QUERY
+- KBASE_IOCTL_FENCE_VALIDATE
+- KBASE_IOCTL_GET_CONTEXT_ID
+- KBASE_IOCTL_GET_CPU_GPU_TIMEINFO
+- KBASE_IOCTL_GET_DDK_VERSION
+- KBASE_IOCTL_GET_GPUPROPS
+- KBASE_IOCTL_JOB_SUBMIT
+- KBASE_IOCTL_KINSTR_JM_FD
+- KBASE_IOCTL_MEM_ALIAS
+- KBASE_IOCTL_MEM_ALLOC
+- KBASE_IOCTL_MEM_COMMIT
+- KBASE_IOCTL_MEM_EXEC_INIT
+- KBASE_IOCTL_MEM_FIND_CPU_OFFSET
+- KBASE_IOCTL_MEM_FIND_GPU_START_AND_OFFSET
+- KBASE_IOCTL_MEM_FLAGS_CHANGE
+- KBASE_IOCTL_MEM_FREE
+- KBASE_IOCTL_MEM_IMPORT
+- KBASE_IOCTL_MEM_JIT_INIT
+- KBASE_IOCTL_MEM_QUERY
+- KBASE_IOCTL_MEM_SYNC
+- KBASE_IOCTL_POST_TERM
+- KBASE_IOCTL_SET_FLAGS
+- KBASE_IOCTL_SOFT_EVENT_UPDATE
+- KBASE_IOCTL_STICKY_RESOURCE_MAP
+- KBASE_IOCTL_STICKY_RESOURCE_UNMAP
+- KBASE_IOCTL_STREAM_CREATE
+- KBASE_IOCTL_VERSION_CHECK

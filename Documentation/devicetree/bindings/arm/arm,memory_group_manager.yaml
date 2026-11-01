@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
+#
+# (C) COPYRIGHT 2025 ARM Limited. All rights reserved.
+#
+# This program is free software and is provided to you under the terms of the
+# GNU General Public License version 2 as published by the Free Software
+# Foundation, and any use by you of this program is subject to the terms
+# of such GNU license.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, you can access it online at
+# http://www.gnu.org/licenses/gpl-2.0.html.
+
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/arm/arm,memory_group_manager.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Arm Memory Group Manager
+
+description: |
+  This binding describes the Arm memory group manager used by Mali GPU device drivers.
+  It provides the physical memory grouping required by the GPU and must be referenced
+  by the GPU node via the "physical-memory-group-manager" property.
+
+maintainers:
+  - ARM Ltd.
+
+select:
+  properties:
+    compatible:
+      contains:
+        enum:
+          - arm,physical-memory-group-manager
+  required:
+    - compatible
+
+properties:
+  compatible:
+    items:
+      - const: arm,physical-memory-group-manager
+
+required:
+  - compatible
+
+additionalProperties: false
+
+examples:
+  - |
+    gpu_physical_memory_group_manager: physical-memory-group-manager {
+        compatible = "arm,physical-memory-group-manager";
+    };
+
+    gpu: gpu@6e000000 {
+        compatible = "arm,mali-midgard";
+        reg = <0x0 0x6e000000 0x0 0x200000>;
+        interrupts = <0 168 4>, <0 168 4>, <0 168 4>;
+        interrupt-names = "JOB", "MMU", "GPU";
+        clocks = <&scpi_dvfs 2>;
+        clock-names = "clk_mali";
+        system-coherency = <31>;
+        physical-memory-group-manager = <&gpu_physical_memory_group_manager>;
+        operating-points = <50000 820000>;
+    };
