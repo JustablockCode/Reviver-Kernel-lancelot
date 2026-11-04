@@ -95,8 +95,8 @@ struct hps_ctxt_struct hps_ctxt = {
 	/* struct cpumask little_cpumask; */
 	/* struct cpumask big_cpumask; */
 	.little_cpu_id_min = 0,
-	.little_cpu_id_max = 3,
-	.big_cpu_id_min = 4,
+	.little_cpu_id_max = 5,
+	.big_cpu_id_min = 6,
 	.big_cpu_id_max = 7,
 
 	/* algo config */
