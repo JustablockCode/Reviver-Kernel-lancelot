@@ -407,6 +407,7 @@
 #define USBIN_COLLAPSE_TIME ((unsigned long)100)
 
 static int smb1351_set_hvdcp_dpdm(struct charger_device *chg_dev);
+static int smb1351_enable_charging(struct charger_device *chg_dev, bool en);
 extern int cycle_count;
 static unsigned long f_vbusin_uv_time;
 static unsigned long s_vbusin_uv_time;
@@ -1496,6 +1497,39 @@ static int smb1351_set_suspend_to_iic(struct charger_device *chg_dev, bool suspe
 	}
 	pr_err("---set1 suspend en : %d\n", suspend);
 	return 0;
+}
+
+static int smb1351_enable_hiz(struct charger_device *chg_dev, bool en)
+{
+	struct smb1351_charger *chip = dev_get_drvdata(&chg_dev->dev);
+	int rc;
+
+	pr_info("smb1351_enable_hiz : %d\n", en);
+
+	rc = smb1351_enable_volatile_writes(chip);
+	if (rc) {
+		pr_err("Couldn't configure for volatile rc = %d\n", rc);
+		return rc;
+	}
+
+	rc = smb1351_masked_write(chip, VARIOUS_FUNC_REG,
+		SUSPEND_MODE_CTRL_BIT, SUSPEND_MODE_CTRL_BY_I2C);
+	if (rc) {
+		pr_err("Couldn't set VARIOUS_FUNC_REG rc=%d\n", rc);
+		return rc;
+	}
+
+	rc = smb1351_masked_write(chip, CMD_INPUT_LIMIT_REG,
+		CMD_SUSPEND_MODE_BIT, en ? CMD_SUSPEND_MODE_BIT : 0);
+	if (rc) {
+		pr_err("Couldn't set CMD_INPUT_LIMIT_REG rc=%d\n", rc);
+		return rc;
+	}
+
+	if (!en)
+		rc = smb1351_enable_charging(chg_dev, true);
+
+	return rc;
 }
 
 #define IRQ_LATCHED_MASK	0x02
@@ -2910,6 +2944,7 @@ static struct charger_ops smb1351_chg_ops = {
 	.get_min_charging_current = smb1351_get_min_ichg,
 	.set_constant_voltage = smb1351_set_float_voltage,
 	.set_suspend = smb1351_set_suspend_to_iic,
+	.enable_hz = smb1351_enable_hiz,
 	.enable_chg_type_det = smb1351_enable_chg_type_det,
 	.plug_out = smb1351_plug_out,
 	.get_charger_type = smb1351_get_charger_type,

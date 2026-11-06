@@ -37,6 +37,13 @@
 
 #define RT1711H_IRQ_WAKE_TIME	(500) /* ms */
 
+bool g_pd_is_present = false;
+
+bool get_pd_status(void)
+{
+       return g_pd_is_present;
+}
+
 struct rt1711_chip {
 	struct i2c_client *client;
 	struct device *dev;
@@ -1538,6 +1545,8 @@ static inline int rt1711h_check_revision(struct i2c_client *client)
 		dev_err(&client->dev, "read chip ID fail\n");
 		return -EIO;
 	}
+
+	g_pd_is_present = true;
 
 	if (vid != RICHTEK_1711_VID) {
 		pr_info("%s failed, VID=0x%04x\n", __func__, vid);

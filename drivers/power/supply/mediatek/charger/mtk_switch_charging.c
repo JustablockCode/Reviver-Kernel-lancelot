@@ -56,6 +56,7 @@
 
 #include <mt-plat/mtk_boot.h>
 #include <mt-plat/v1/mtk_charger.h>
+#include <mt-plat/v1/mtk_battery.h>
 /* #include <musb_core.h> */ /* FIXME */
 #include "mtk_charger_intf.h"
 #include "mtk_switch_charging.h"
@@ -68,6 +69,7 @@ struct tag_bootmode {
 };
 
 extern int call_mode;
+extern enum hvdcp_status hvdcp_type_tmp;
 static int _uA_to_mA(int uA)
 {
 	if (uA == -1)
@@ -272,20 +274,28 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 				info->data.ac_charger_current;
 		switch (info->usb_psy->desc->type) {
 		case POWER_SUPPLY_TYPE_USB_HVDCP:
-				pdata->input_current_limit = 2000000;
-				pdata->charging_current_limit = 3000000;
-				break;
 		case POWER_SUPPLY_TYPE_USB_HVDCP_3:
+			if (hvdcp_type_tmp == HVDCP_3 &&
+				battery_get_vbus() <= 7000) {
 				pdata->input_current_limit = 3000000;
 				pdata->charging_current_limit = 3000000;
-				break;
+			} else {
+				pdata->input_current_limit = 2000000;
+				pdata->charging_current_limit = 3000000;
+			}
+			break;
+
 		case POWER_SUPPLY_TYPE_USB_DCP:
 		default:
-				pdata->input_current_limit =
-				info->data.ac_charger_input_current;
-				pdata->charging_current_limit = 2000000;
-				break;
+			pdata->input_current_limit =
+			info->data.ac_charger_input_current;
+			pdata->charging_current_limit = 2000000;
+		break;
 		}
+		if (battery_get_bat_voltage() >= 4300)
+			pdata->charging_current_limit = 1000000;
+		if (info->battery_temp >= 35)
+			pdata->charging_current_limit = 1000000;
 	} else if (info->chr_type == CHARGING_HOST) {
 		pdata->input_current_limit =
 				info->data.charging_host_charger_current;

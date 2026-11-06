@@ -139,6 +139,17 @@ enum sw_jeita_state_enum {
 	TEMP_ABOVE_T4
 };
 
+enum hq_config {
+	K19A = 0,
+	K19B,
+	K19C,
+	K19D,
+	K19T,
+	K19S,
+	K19U,
+	K19V
+};
+
 struct sw_jeita_data {
 	int sm;
 	int pre_sm;
@@ -195,6 +206,7 @@ struct charger_custom_data {
 	int jeita_temp_t2_to_t3_cc;
 	int jeita_temp_t1_to_t2_cc;
 	int jeita_temp_t0_to_t1_cc;
+	int jeita_temp_below_t0_cc;
 
 	int jeita_temp_above_t4_cv;
 	int jeita_temp_t3_to_t4_cv;

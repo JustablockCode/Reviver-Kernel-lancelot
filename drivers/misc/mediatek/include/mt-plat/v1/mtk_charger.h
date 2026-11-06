@@ -112,6 +112,7 @@ extern int charger_manager_enable_chg_type_det(
 	bool en);
 extern int charger_manager_get_ibus(int *ibus);
 extern int charger_manager_set_input_suspend(int suspend);
+extern int charger_manager_set_hiz_enable(int hiz_enable);
 extern int charger_manager_is_input_suspend(void);
 extern int charger_manager_get_prop_system_temp_level(void);
 extern int charger_manager_get_prop_system_temp_level_max(void);
