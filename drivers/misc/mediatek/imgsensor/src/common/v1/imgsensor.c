@@ -4,8 +4,7 @@
  */
 
 #include "imgsensor_cfg_table.h"
-#if defined(MERLIN_MSM_CAMERA_HW_INFO) || defined(LANCELOT_MSM_CAMERA_HW_INFO)\
-|| defined(GALAHAD_MSM_CAMERA_HW_INFO)
+#if defined(CONFIG_TARGET_PRODUCT_MERLIN) || defined(CONFIG_TARGET_PRODUCT_LANCELOT) || defined(CONFIG_TARGET_PRODUCT_SELENE)
 #include "hq_imgsensor_hw_register_info.h"
 #endif
 #include <linux/platform_device.h>
@@ -599,8 +598,7 @@ int imgsensor_set_driver(struct IMGSENSOR_SENSOR *psensor)
 					    psensor->inst.sensor_idx,
 					    drv_idx,
 					    psensor_inst->psensor_name);
-#if defined(MERLIN_MSM_CAMERA_HW_INFO) || defined(LANCELOT_MSM_CAMERA_HW_INFO) \
-|| defined(GALAHAD_MSM_CAMERA_HW_INFO)
+#if defined(CONFIG_TARGET_PRODUCT_MERLIN) || defined(CONFIG_TARGET_PRODUCT_LANCELOT) || defined(CONFIG_TARGET_PRODUCT_SELENE)
 					hq_imgsensor_sensor_hw_register(psensor, psensor_inst);
 #endif
 					ret = drv_idx;
