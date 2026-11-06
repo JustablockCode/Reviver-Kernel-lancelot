@@ -895,6 +895,10 @@ static int AF_i2c_probe(struct i2c_client *client,
 	CN3927AFJ19_SwitchToPowerDown(g_pstAF_I2Cclient, true); /* Power down mode */
 #endif
 
+#ifdef CONFIG_MTK_LENS_GT9764AF_SUPPORT
+	GT9764AF_SwitchToPowerDown(g_pstAF_I2Cclient);
+#endif
+
 	LOG_INF("Attached!!\n");
 
 	return 0;
