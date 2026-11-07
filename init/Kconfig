@@ -724,7 +724,7 @@ config UCLAMP_TASK
 config UCLAMP_BUCKETS_COUNT
 	int "Number of supported utilization clamp buckets"
 	range 5 20
-	default 5
+	default 20
 	depends on UCLAMP_TASK
 	help
 	  Defines the number of clamp buckets to use. The range of each bucket
