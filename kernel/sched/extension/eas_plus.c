@@ -147,6 +147,10 @@ void init_perf_order_domains(struct perf_domain *pd)
 		}
 	}
 
+#ifdef CONFIG_UCLAMP_MAP_OPP
+	init_opp_capacity_tbl();
+#endif
+
 	pr_info("Initializing perf order domain done\n");
 }
 EXPORT_SYMBOL(init_perf_order_domains);

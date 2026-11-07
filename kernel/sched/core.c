@@ -745,6 +745,91 @@ static void set_load_weight(struct task_struct *p, bool update_load)
  */
 static DEFINE_MUTEX(uclamp_mutex);
 
+#ifdef CONFIG_UCLAMP_MAP_OPP
+#include <linux/sort.h>
+#include "../../drivers/misc/mediatek/base/power/include/mtk_upower.h"
+
+int total_opp_count;
+int opp_capacity_tbl_ready;
+static unsigned int opp_capacity_tbl[64];
+
+static int cap_compare(const void *lhs, const void *rhs)
+{
+	unsigned int lhs_cap = *(const unsigned int *)(lhs);
+	unsigned int rhs_cap = *(const unsigned int *)(rhs);
+
+	if (lhs_cap < rhs_cap)
+		return -1;
+	if (lhs_cap > rhs_cap)
+		return 1;
+	return 0;
+}
+
+void init_opp_capacity_tbl(void)
+{
+	struct upower_tbl *seen_tbls[NR_CPUS] = {NULL};
+	int num_tbls = 0;
+	int cpu, i, j, count = 0;
+
+	if (opp_capacity_tbl_ready)
+		return;
+
+	for_each_possible_cpu(cpu) {
+		struct upower_tbl *ut = upower_get_core_tbl(cpu);
+
+		if (!ut || !ut->row_num)
+			continue;
+
+		for (i = 0; i < num_tbls; i++) {
+			if (seen_tbls[i] == ut)
+				break;
+		}
+		if (i == num_tbls && num_tbls < NR_CPUS)
+			seen_tbls[num_tbls++] = ut;
+	}
+
+	for (i = 0; i < num_tbls; i++) {
+		struct upower_tbl *ut = seen_tbls[i];
+
+		for (j = 0; j < ut->row_num; j++) {
+			unsigned int cap = (unsigned int)ut->row[j].cap;
+
+			if (!cap)
+				continue;
+			if (count < ARRAY_SIZE(opp_capacity_tbl))
+				opp_capacity_tbl[count++] = cap;
+		}
+	}
+
+	if (!count)
+		return;
+
+	sort(opp_capacity_tbl, count, sizeof(unsigned int), cap_compare, NULL);
+
+	opp_capacity_tbl[count - 1] = SCHED_CAPACITY_SCALE;
+	total_opp_count = count;
+	smp_wmb();
+	opp_capacity_tbl_ready = 1;
+}
+
+unsigned int find_fit_capacity(unsigned int cap)
+{
+	int i;
+
+	if (unlikely(!opp_capacity_tbl_ready))
+		return cap;
+
+	if (cap == 0)
+		return 0;
+
+	for (i = 0; i < total_opp_count; i++) {
+		if (opp_capacity_tbl[i] >= cap)
+			return opp_capacity_tbl[i];
+	}
+	return SCHED_CAPACITY_SCALE;
+}
+#endif
+
 /* Max allowed minimum utilization */
 unsigned int sysctl_sched_uclamp_util_min = SCHED_CAPACITY_SCALE;
 
@@ -1159,6 +1244,13 @@ int sysctl_sched_uclamp_handler(struct ctl_table *table, int write,
 		goto undo;
 	}
 
+#ifdef CONFIG_UCLAMP_MAP_OPP
+	if (!opp_capacity_tbl_ready)
+		init_opp_capacity_tbl();
+	sysctl_sched_uclamp_util_min = find_fit_capacity(sysctl_sched_uclamp_util_min);
+	sysctl_sched_uclamp_util_max = find_fit_capacity(sysctl_sched_uclamp_util_max);
+#endif
+
 	if (old_min != sysctl_sched_uclamp_util_min) {
 		uclamp_se_set(&uclamp_default[UCLAMP_MIN],
 			      sysctl_sched_uclamp_util_min, false);
@@ -1252,13 +1344,23 @@ static void __setscheduler_uclamp(struct task_struct *p,
 		return;
 
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MIN) {
+#ifdef CONFIG_UCLAMP_MAP_OPP
+		uclamp_se_set(&p->uclamp_req[UCLAMP_MIN],
+			      find_fit_capacity(attr->sched_util_min), true);
+#else
 		uclamp_se_set(&p->uclamp_req[UCLAMP_MIN],
 			      attr->sched_util_min, true);
+#endif
 	}
 
 	if (attr->sched_flags & SCHED_FLAG_UTIL_CLAMP_MAX) {
+#ifdef CONFIG_UCLAMP_MAP_OPP
+		uclamp_se_set(&p->uclamp_req[UCLAMP_MAX],
+			      find_fit_capacity(attr->sched_util_max), true);
+#else
 		uclamp_se_set(&p->uclamp_req[UCLAMP_MAX],
 			      attr->sched_util_max, true);
+#endif
 	}
 }
 
@@ -7451,6 +7553,12 @@ static ssize_t cpu_uclamp_write(struct kernfs_open_file *of, char *buf,
 
 	mutex_lock(&uclamp_mutex);
 	rcu_read_lock();
+
+#ifdef CONFIG_UCLAMP_MAP_OPP
+	if (!opp_capacity_tbl_ready)
+		init_opp_capacity_tbl();
+	req.util = find_fit_capacity(req.util);
+#endif
 
 	tg = css_tg(of_css(of));
 	if (tg->uclamp_req[clamp_id].value != req.util)

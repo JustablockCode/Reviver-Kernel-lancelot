@@ -2426,6 +2426,15 @@ unsigned int uclamp_task(struct task_struct *p);
 bool uclamp_latency_sensitive(struct task_struct *p);
 bool uclamp_boosted(struct task_struct *p);
 
+#ifdef CONFIG_UCLAMP_MAP_OPP
+extern int opp_capacity_tbl_ready;
+extern void init_opp_capacity_tbl(void);
+extern unsigned int find_fit_capacity(unsigned int cap);
+#else
+static inline void init_opp_capacity_tbl(void) {}
+static inline unsigned int find_fit_capacity(unsigned int cap) { return cap; }
+#endif
+
 #ifdef arch_scale_freq_capacity
 # ifndef arch_scale_freq_invariant
 #  define arch_scale_freq_invariant()	true

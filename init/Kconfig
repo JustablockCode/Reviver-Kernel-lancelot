@@ -752,6 +752,13 @@ config UCLAMP_BUCKETS_COUNT
 
 	  If in doubt, use the default value.
 
+config UCLAMP_MAP_OPP
+	bool "Map utilization clamping to opp corresponding capacity"
+	depends on UCLAMP_TASK
+	default y
+	help
+	  This feature maps utilization clamping values to CPU OPP capacities.
+
 endmenu
 
 #
