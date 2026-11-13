@@ -64,7 +64,11 @@ NOKPROBE_SYMBOL(mdscr_read);
  * Allow root to disable self-hosted debug from userspace.
  * This is useful if you want to connect an external JTAG debugger.
  */
+#ifdef CONFIG_TRACING
 static bool debug_enabled = true;
+#else
+static bool debug_enabled;
+#endif
 
 static int create_debug_debugfs_entry(void)
 {

@@ -32,7 +32,7 @@
 /* C3T code for HQ-223914 by liunianliang at 2022/08/03 start */
 
 #define mtk_cooler_backlight_dprintk(fmt, args...)	\
-	pr_notice("thermal/cooler/backlight " fmt, ##args)
+	pr_debug("thermal/cooler/backlight " fmt, ##args)
 
 
 static struct thermal_cooling_device

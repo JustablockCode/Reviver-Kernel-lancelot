@@ -1137,7 +1137,7 @@ static int FDVT_WaitIRQ(u32 *u4IRQMask)
 	}
 
 	*u4IRQMask = g_FDVTIRQ;
-	LOG_INF("[FDVT] Receive IRQ : 0x%x\n", g_FDVTIRQ);
+	LOG_DBG("[FDVT] Receive IRQ : 0x%x\n", g_FDVTIRQ);
 
 	/* check if user is interrupted by system signal */
 	if (timeout != 0 && !(g_FDVTIRQMSK & g_FDVTIRQ)) {

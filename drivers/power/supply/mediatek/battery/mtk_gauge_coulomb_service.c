@@ -47,6 +47,7 @@ do {									\
 	}								   \
 } while (0)
 
+#ifdef CONFIG_MTK_ENG_BUILD
 #define ft_debug(fmt, args...)   \
 do {									\
 	if (fgclog_level >= FTLOG_DEBUG_LEVEL) {		\
@@ -60,6 +61,11 @@ do {									\
 		pr_notice(fmt, ##args);\
 	}						\
 } while (0)
+#else
+#define ft_debug(fmt, args...) ((void)0)
+
+#define ft_trace(fmt, args...) ((void)0)
+#endif
 
 
 void mutex_coulomb_lock(void)
