@@ -15,7 +15,11 @@ MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
 ccflags-y += -I$(srctree)/drivers/misc/mediatek/dramc/$(MTK_PLATFORM)
 
 ifneq (,$(filter $(CONFIG_MTK_PLATFORM), "mt6768" "mt6739" "mt6785"))
-obj-$(CONFIG_MTK_DRAMC) := dramc.o mtk_lastdramc.o mtk_memtest.o mtk_rshmoo.o
+obj-$(CONFIG_MTK_DRAMC) := dramc.o
+
+ifeq ($(CONFIG_MTK_ENG_BUILD),y)
+obj-$(CONFIG_MTK_DRAMC) += mtk_lastdramc.o mtk_memtest.o mtk_rshmoo.o
+endif
 obj-$(CONFIG_MTK_DRAMC) += $(subst ",,$(CONFIG_MTK_PLATFORM))/
 else
 obj-$(CONFIG_MTK_DRAMC_LEGACY) := dramc.o mtk_lastdramc.o mtk_memtest.o mtk_rshmoo.o
