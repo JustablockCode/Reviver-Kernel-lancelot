@@ -26,6 +26,13 @@ config NFC_PN553_DEVICES
 
 	  You can say N here if you don't have any SPI connected to your computer.
 
+config NFC_PN553_19A_DEVICES
+	bool "NXP pn553 NCI driver for the nq-nci node"
+	depends on I2C
+	help
+	  Driver for the NXP NFC controller described by a "nq-nci" device
+	  tree node. Usually its used on galahad / lancelot.
+
 config NFC_MEI_PHY
 	tristate "MEI bus NFC device support"
 	depends on INTEL_MEI && NFC_HCI

@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2010 Trusted Logic S.A.
+ * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -83,7 +84,7 @@ MODULE_DEVICE_TABLE(of, msm_match_table);
 #define ESE_CLD_RST_RSP_SIZE 0x04
 #define WAKEUP_SRC_TIMEOUT		(2000)
 
-//extern int force_sig_info(int, struct siginfo *, struct task_struct *);
+extern int force_sig_info(int, struct siginfo *, struct task_struct *);
 
 /* VEN is kept ON all the time if you define the macro VEN_ALWAYS_ON.
 Used for SN100 usecases */
@@ -462,7 +463,7 @@ static int signal_handler(p61_access_state_t state, long nfc_pid)
 		task = pid_task(find_vpid(pid), PIDTYPE_PID);
 		if (task) {
 			pr_info("%s.\n", task->comm);
-			//sigret = force_sig_info(SIG_NFC, &sinfo, task);
+			sigret = force_sig_info(SIG_NFC, &sinfo, task);
 			if (sigret < 0) {
 				pr_info
 				    ("send_sig_info failed..... sigret %d.\n",
@@ -1345,15 +1346,11 @@ static void secure_timer_workqueue(struct work_struct *Wq)
 	release_ese_lock(P61_STATE_WIRED);
 	return;
 }
-
-//static void secure_timer_callback(unsigned long data)
-//{
-	/* Flush and push the timer callback event to the bottom half(work queue)
-	   to be executed later, at a safer time */
-//	flush_workqueue(g_pn544_dev->pSecureTimerCbWq);
-//	queue_work(g_pn544_dev->pSecureTimerCbWq, &g_pn544_dev->wq_task);
-//	return;
-//}
+static void secure_timer_callback(struct timer_list *timer)
+{
+	queue_work(g_pn544_dev->pSecureTimerCbWq,
+		   &g_pn544_dev->wq_task);
+}
 
 static long start_seccure_timer(unsigned long timer_value)
 {
@@ -1363,13 +1360,10 @@ static long start_seccure_timer(unsigned long timer_value)
 	if (timer_pending(&secure_timer) == 1) {
 		pr_info("start_seccure_timer: delete pending timer \n");
 		/* delete timer if already pending */
-		del_timer(&secure_timer);
+		del_timer_sync(&secure_timer);
 	}
 	/* Start the timer if timer value is non-zero */
 	if (timer_value) {
-		//init_timer(&secure_timer);
-		//setup_timer(&secure_timer, secure_timer_callback, 0);
-
 		pr_info("start_seccure_timer: timeout %lums (%lu)\n",
 			timer_value, jiffies);
 		ret =
@@ -1644,7 +1638,12 @@ static int pn544_probe(struct i2c_client *client,
 	spin_lock_init(&g_pn544_dev->irq_enabled_lock);
 	g_pn544_dev->pSecureTimerCbWq =
 	    create_workqueue(SECURE_TIMER_WORK_QUEUE);
+	if (!g_pn544_dev->pSecureTimerCbWq) {
+		ret = -ENOMEM;
+		goto err_mutex;
+	}
 	INIT_WORK(&g_pn544_dev->wq_task, secure_timer_workqueue);
+	timer_setup(&secure_timer, secure_timer_callback, 0);
 	g_pn544_dev->irq_wake_up = false;
 	g_pn544_dev->pn544_device.minor = MISC_DYNAMIC_MINOR;
 	g_pn544_dev->pn544_device.name = "nq-nci";
@@ -1694,11 +1693,12 @@ static int pn544_probe(struct i2c_client *client,
 err_request_irq_failed:
 	misc_deregister(&g_pn544_dev->pn544_device);
 err_misc_register:
+	destroy_workqueue(g_pn544_dev->pSecureTimerCbWq);
+err_mutex:
 	mutex_destroy(&g_pn544_dev->read_mutex);
 	mutex_destroy(&g_pn544_dev->p61_state_mutex);
-	kfree(g_pn544_dev);
 err_exit:
-	if (g_pn544_dev->firm_gpio)
+	if (g_pn544_dev && g_pn544_dev->firm_gpio)
 		gpio_free(platform_data->firm_gpio);
 err_firm:
 	gpio_free(platform_data->ven_gpio);
@@ -1708,6 +1708,7 @@ err_ven:
 err_iso_rst:
 	gpio_free(platform_data->iso_rst_gpio);
 #endif
+	kfree(g_pn544_dev);
 	pr_info("%s : probe to return ret is %d\n", __func__, ret);
 	return ret;
 }
@@ -1728,11 +1729,12 @@ static int pn544_remove(struct i2c_client *client)
 	unregister_reboot_notifier(&nfcc_notifier);
 	free_irq(client->irq, pn544_dev);
 	misc_deregister(&pn544_dev->pn544_device);
+	del_timer_sync(&secure_timer);
+	destroy_workqueue(pn544_dev->pSecureTimerCbWq);
 	mutex_destroy(&pn544_dev->read_mutex);
 	mutex_destroy(&pn544_dev->p61_state_mutex);
 	gpio_free(pn544_dev->irq_gpio);
 	gpio_free(pn544_dev->ven_gpio);
-	destroy_workqueue(pn544_dev->pSecureTimerCbWq);
 #ifdef ISO_RST
 	gpio_free(pn544_dev->iso_rst_gpio);
 #endif
