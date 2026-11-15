@@ -14,7 +14,7 @@ Built with **SukiSU Ultra** and **SUSFS** support.
 
 **Supported device:** Xiaomi Redmi 9 / lancelot
 
-**Android:** Only tested on **Android 13** and **Android 16** S vendor. Other Android versions may not work correctly.
+**Android:** Only tested on **Android 13**, **Android 16** and **Android 17** S vendor. Other Android versions may not work correctly.
 
 ---
 
