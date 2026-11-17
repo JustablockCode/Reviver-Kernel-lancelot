@@ -1205,7 +1205,7 @@ static int rcu_boost_kthread(void *arg)
 		if (spincnt > 10) {
 			rnp->boost_kthread_status = RCU_KTHREAD_YIELDING;
 			trace_rcu_utilization(TPS("End boost kthread@rcu_yield"));
-			schedule_timeout_interruptible(2);
+			schedule_timeout_idle(2);
 			trace_rcu_utilization(TPS("Start boost kthread@rcu_yield"));
 			spincnt = 0;
 		}
@@ -1284,7 +1284,7 @@ static bool rcu_is_callbacks_kthread(void)
  */
 static void rcu_preempt_boost_start_gp(struct rcu_node *rnp)
 {
-	rnp->boost_time = jiffies + RCU_BOOST_DELAY_JIFFIES;
+	rnp->boost_time = jiffies;
 }
 
 /*

@@ -27,7 +27,7 @@
 #define ENABLE_VPU              (0)
 #define ENABLE_MDLA             (0)
 #endif
-#define ENABLE_INIT1_STRESS	(1)
+#define ENABLE_INIT1_STRESS	(0)
 
 #define EEM_OFFSET
 #define SET_PMIC_VOLT		(1)

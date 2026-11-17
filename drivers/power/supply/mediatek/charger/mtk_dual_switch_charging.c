@@ -9,6 +9,7 @@
 #include <linux/platform_device.h>
 
 #include <mt-plat/mtk_boot.h>
+#include <mt-plat/v1/mtk_battery.h>
 #include "mtk_charger_intf.h"
 #include "mtk_dual_switch_charging.h"
 extern enum hvdcp_status hvdcp_type_tmp;
@@ -152,12 +153,8 @@ dual_swchg_select_charging_current_limit(struct charger_manager *info)
 
 	if (info->atm_enabled == true && (info->chr_type == STANDARD_HOST ||
 	    info->chr_type == CHARGING_HOST)) {
-#ifndef CONFIG_TARGET_PRODUCT_SELENE
-		pdata->input_current_limit = 100000; /* 100mA */
-#else
 		pdata->input_current_limit = 500000;
 		pdata->charging_current_limit = 500000;
-#endif
 		goto done;
 	}
 
@@ -286,20 +283,28 @@ dual_swchg_select_charging_current_limit(struct charger_manager *info)
 					info->data.ac_charger_current;
 		switch (info->usb_psy->desc->type) {
 		case POWER_SUPPLY_TYPE_USB_HVDCP:
-				pdata->input_current_limit = 2000000;
-				pdata->charging_current_limit = 3000000;
-				break;
 		case POWER_SUPPLY_TYPE_USB_HVDCP_3:
+			if (hvdcp_type_tmp == HVDCP_3 &&
+				battery_get_vbus() <= 7000) {
 				pdata->input_current_limit = 3000000;
 				pdata->charging_current_limit = 3000000;
-				break;
-		default:
-				break;
-		}
-		if(hvdcp_type_tmp == HVDCP) {
+			} else {
 				pdata->input_current_limit = 2000000;
 				pdata->charging_current_limit = 3000000;
+			}
+			break;
+
+		case POWER_SUPPLY_TYPE_USB_DCP:
+		default:
+			pdata->input_current_limit =
+			info->data.ac_charger_input_current;
+			pdata->charging_current_limit = 2000000;
+		break;
 		}
+		if (battery_get_bat_voltage() >= 4300)
+			pdata->charging_current_limit = 1000000;
+		if (info->battery_temp >= 35)
+			pdata->charging_current_limit = 1000000;
 		mtk_pe20_set_charging_current(info,
 					&pdata->charging_current_limit,
 					&pdata->input_current_limit);
@@ -350,7 +355,6 @@ dual_swchg_select_charging_current_limit(struct charger_manager *info)
 				info->data.apple_2_1a_charger_current;
 	}
 
-#ifndef CONFIG_TARGET_PRODUCT_SELENE
 	if (info->enable_sw_jeita) {
 		if (IS_ENABLED(CONFIG_USBIF_COMPLIANCE)
 		    && info->chr_type == STANDARD_HOST)
@@ -362,12 +366,6 @@ dual_swchg_select_charging_current_limit(struct charger_manager *info)
 			}
 		}
 	}
-#else
-	if (info->enable_sw_jeita){
-		if (pdata->charging_current_limit > info->sw_jeita.cc)
-			pdata->charging_current_limit = info->sw_jeita.cc;
-	}
-#endif
 
 	/*
 	 * If thermal current limit is less than charging IC's minimum
@@ -561,16 +559,9 @@ static void swchg_select_cv(struct charger_manager *info)
 
 	if (info->enable_sw_jeita)
 		if (info->sw_jeita.cv != 0) {
-			chr_err("%s, info->sw_jeita.cv  = %d\n", __func__, info->sw_jeita.cv);
-#ifndef CONFIG_TARGET_PRODUCT_SELENE
 			charger_dev_set_constant_voltage(info->chg1_dev,
 							info->sw_jeita.cv);
 			return;
-#else
-			if (constant_voltage > info->sw_jeita.cv) {
-				constant_voltage =  info->sw_jeita.cv;
-			}
-#endif
 		}
 
 	/* dynamic cv*/
@@ -580,7 +571,7 @@ static void swchg_select_cv(struct charger_manager *info)
 			constant_voltage =  dynamic_cv;
 	}
 
-	chr_err("%s, constant_voltage  = %d\n", __func__,constant_voltage);
+	// chr_err("%s, constant_voltage  = %d\n", __func__,constant_voltage);
 	charger_dev_set_constant_voltage(info->chg1_dev, constant_voltage);
 	/* Set slave charger's CV to 200mV higher than master's */
 	if (chg2_chip_enabled)
@@ -877,64 +868,9 @@ int mtk_dual_switch_chr_err(struct charger_manager *info)
 	return 0;
 }
 
-static int change_recharge_status(struct charger_manager *info)
-{
-#ifdef CONFIG_TARGET_PRODUCT_SELENE
-	bool recharge_flag = false;
-	unsigned int battery_uisoc = 0;
-	long int battery_volt = 0;
-	int battery_health = 0;
-	int ret;
-	int recharger_uisoc_limit;
-	struct power_supply *psy;
-	union power_supply_propval val;
-
-	recharger_uisoc_limit = 99;
-	psy = power_supply_get_by_name("battery");
-	if (!psy) {
-		pr_err("%s : power_supply_get_by_name error!\n", __func__);
-	}
-
-	ret = power_supply_get_property(psy, POWER_SUPPLY_PROP_HEALTH, &val);
-	if (ret) {
-		pr_err("%s : power_supply_get_property error!\n", __func__);
-	}
-	battery_health = val.intval;
-
-	ret = power_supply_get_property(psy, POWER_SUPPLY_PROP_VOLTAGE_NOW, &val);
-	if (ret) {
-		pr_err("%s : power_supply_get_property error!\n", __func__);
-	}
-	battery_volt = val.intval;
-
-	ret = power_supply_get_property(psy, POWER_SUPPLY_PROP_CAPACITY, &val);
-	if (ret) {
-		pr_err("%s : power_supply_get_property error!\n", __func__);
-	}
-	battery_uisoc = val.intval;
-
-	pr_err("%s : battery_health = %d, battery_volt = %d, battery_uisoc = %d, recharger_uisoc_limit = %d\n", __func__,
-						battery_health, battery_volt, battery_uisoc, recharger_uisoc_limit);
-
-	if (battery_health  == POWER_SUPPLY_HEALTH_OVERHEAT) {
-			chr_err("over heat , battery recharging!\n");
-			recharge_flag = true;
-	} else {
-		if (battery_uisoc < recharger_uisoc_limit) {
-			chr_err("not over heat , battery recharging!\n");
-			recharge_flag = true;
-		}
-	}
-	return recharge_flag;
-#else
-	return true;
-#endif
-}
-
 int mtk_dual_switch_chr_full(struct charger_manager *info)
 {
 	bool chg_done = false;
-	bool recharge_flag = false;
 	struct dual_switch_charging_alg_data *swchgalg = info->algorithm_data;
 
 	/* turn off LED */
@@ -946,9 +882,7 @@ int mtk_dual_switch_chr_full(struct charger_manager *info)
 	swchg_select_cv(info);
 	info->polling_interval = CHARGING_FULL_INTERVAL;
 	charger_dev_is_charging_done(info->chg1_dev, &chg_done);
-
-	recharge_flag = change_recharge_status(info);
-	if (!chg_done && recharge_flag) {
+	if (!chg_done) {
 		swchgalg->state = CHR_CC;
 		charger_dev_do_event(info->chg1_dev, EVENT_RECHARGE, 0);
 		mtk_pe20_set_to_check_chr_type(info, true);

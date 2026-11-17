@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2021 MediaTek Inc.
- */
+*/
 
 /*
  *
@@ -1486,11 +1486,7 @@ void do_sw_jeita_state_machine(struct charger_manager *info)
 				info->data.temp_t0_thres);
 
 			sw_jeita->sm = TEMP_BELOW_T0;
-	} else {
-		chr_err("[SW_JEITA] Battery below low Temperature(%d) !!\n",
-			info->data.temp_neg_10_thres);
-		sw_jeita->sm = TEMP_BELOW_NEG_T0;
-		sw_jeita->charging = false;
+			sw_jeita->charging = false;
 	}
 #ifdef CONFIG_TARGET_PRODUCT_SELENE
 	hq_jeita_config(info);
@@ -1515,8 +1511,6 @@ void do_sw_jeita_state_machine(struct charger_manager *info)
 			sw_jeita->cv = info->data.jeita_temp_t0_to_t1_cv;
 		} else if (sw_jeita->sm == TEMP_BELOW_T0) {
 			sw_jeita->cc = info->data.jeita_temp_below_t0_cc;
-			sw_jeita->cv = info->data.jeita_temp_below_t0_cv;
-		} else if (sw_jeita->sm == TEMP_BELOW_NEG_T0) {
 			sw_jeita->cv = info->data.jeita_temp_below_t0_cv;
 		} else
 			sw_jeita->cv = info->data.battery_cv;

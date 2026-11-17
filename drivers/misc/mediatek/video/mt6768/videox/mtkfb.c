@@ -463,7 +463,7 @@ static ssize_t mtkfb_set_bpoint(struct device *dev, struct device_attribute *att
 
 static ssize_t mtkfb_get_panel_info(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	int ret;
+	int ret = 0;
 
 	if (strncmp(mtkfb_lcm_name, "nt36672A_fhdp_dsi_vdo_tianma_lcm_drv", 36) == 0) {
 		ret = sprintf(buf, "incell,vendor:tianma,IC:nt36672a(novatek)\n");
@@ -479,6 +479,11 @@ static ssize_t mtkfb_get_panel_info(struct device *dev, struct device_attribute 
 		ret = sprintf(buf, "incell,vendor:Dijing,IC:nt36672(novatek)\n");
 	} else if (strncmp(mtkfb_lcm_name, "nt36672D_fhdp_dsi_vdo_tianma_lcm_drv", 36) == 0) {
 		ret = sprintf(buf, "incell,vendor:tianma,IC:nt36672D(novatek)\n");
+	} else if (!strcmp(mtkfb_lcm_name, "dsi_panel_k19a_36_02_0a_dsc_vdo_lcm_drv") ||
+       !strcmp(mtkfb_lcm_name, "dsi_panel_k19s_36_03_0c_dsc_vdo_lcm_drv") ||
+       !strcmp(mtkfb_lcm_name, "dsi_panel_k19a_43_02_0b_dsc_vdo_lcm_drv")) {
+	ret = scnprintf(buf, PAGE_SIZE,
+		"panel_name=%s\n", mtkfb_lcm_name);
 	}
 
 	return ret;

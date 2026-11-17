@@ -19,7 +19,7 @@
 #include <linux/regulator/consumer.h>
 struct vibrator_hw *pvib_cust;
 
-static int debug_enable_vib_hal = 1;
+static int debug_enable_vib_hal = 0;
 /* #define pr_fmt(fmt) "[vibrator]"fmt */
 #define VIB_DEBUG(format, args...) do { \
 	if (debug_enable_vib_hal) {\

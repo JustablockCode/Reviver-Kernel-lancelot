@@ -213,6 +213,7 @@ err_out:
 int disp_layer_info_statistic(struct disp_ddp_path_config *last_config,
 	struct disp_frame_cfg_t *cfg)
 {
+#ifdef CONFIG_MTK_ENG_BUILD
 	unsigned int i, phy_num = 0, ext_num = 0;
 	int phy_num_with_arm_ext;
 
@@ -264,13 +265,16 @@ int disp_layer_info_statistic(struct disp_ddp_path_config *last_config,
 			"%ld,", layer_stat.cnt_by_layers_with_arm_ext[i]);
 		DISPMSG("layer_cnt %s\n", str);
 	}
+#endif
 
 	return 0;
 }
 
 void disp_layer_info_statistic_reset(void)
 {
+#ifdef CONFIG_MTK_ENG_BUILD
 	memset(&layer_stat, 0, sizeof(layer_stat));
+#endif
 }
 
 /*********************** basic test ****************************/
@@ -582,6 +586,7 @@ static int __maybe_unused compare_dsi_checksum(unsigned long unused)
 
 static int __maybe_unused check_dsi_checksum(void)
 {
+#ifdef CONFIG_MTK_ENG_BUILD
 	struct cmdqRecStruct *handle;
 	int ret;
 
@@ -608,6 +613,7 @@ static int __maybe_unused check_dsi_checksum(void)
 		disp_addr_convert(DISPSYS_DSI0_BASE + 0x144));
 	cmdqRecFlushAsyncCallback(handle, compare_dsi_checksum, 0);
 	cmdqRecDestroy(handle);
+#endif
 	return 0;
 }
 

@@ -9,7 +9,7 @@
 #include "scp.h"
 
 /* scp platform configs*/
-#define SCP_BOOT_TIME_OUT_MONITOR        (1)
+#define SCP_BOOT_TIME_OUT_MONITOR        (0)
 #define SCP_RESERVED_MEM                 (1)
 #ifdef CONFIG_MTK_TINYSYS_SCP_LOGGER_SUPPORT
 #define SCP_LOGGER_ENABLE                (1)

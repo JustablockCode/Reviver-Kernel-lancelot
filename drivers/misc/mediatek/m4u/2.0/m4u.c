@@ -1617,8 +1617,7 @@ static int m4u_fb_notifier_callback(struct notifier_block *self,
 	struct fb_event *evdata = data;
 	int blank;
 
-	m4u_err("%s %ld, %d\n", __func__, event,
-	       FB_EVENT_BLANK);
+	//m4u_err("%s %ld, %d\n", __func__, event, FB_EVENT_BLANK);
 
 	if (event != FB_EVENT_BLANK)
 		return 0;

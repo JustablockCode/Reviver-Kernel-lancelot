@@ -490,7 +490,7 @@ static int bms_get_property(struct power_supply *psy,
 #endif
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
-		pr_err("gm.algo_qmax:%d gm.aging_factor:%d\n", gm.algo_qmax, gm.aging_factor);
+		pr_debug("gm.algo_qmax:%d gm.aging_factor:%d\n", gm.algo_qmax, gm.aging_factor);
 #ifndef CONFIG_TARGET_PRODUCT_SELENE
 		if (mtk_qmax_aging < 50200)
 			qmax = mtk_qmax_aging * 100;
@@ -584,14 +584,14 @@ void otg_thermal_limit(void)
 {
 	static struct charger_device *primary_charger;
 	if (otg_ibat_limit == 1) {
-		pr_err("ibat limit otg. skip thermal limit otg current\n");
+		pr_debug("ibat limit otg. skip thermal limit otg current\n");
 		return;
 	}
 	if (!primary_charger) {
-		pr_err("primary_charger is NULL\n");
+		pr_debug("primary_charger is NULL\n");
 		primary_charger = get_charger_by_name("primary_chg");
 		if (!primary_charger) {
-			pr_err("primary_charger is NULL again\n");
+			pr_debug("primary_charger is NULL again\n");
 			return;
 		}
 	}
@@ -693,7 +693,7 @@ static int battery_get_property(struct power_supply *psy,
 		val->intval = battery_get_bat_avg_current() * 100;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
-		pr_err("gm.algo_qmax:%d gm.aging_factor:%d\n", gm.algo_qmax, gm.aging_factor);
+		pr_debug("gm.algo_qmax:%d gm.aging_factor:%d\n", gm.algo_qmax, gm.aging_factor);
 #ifndef CONFIG_TARGET_PRODUCT_SELENE
 		if (mtk_qmax_aging < 50200)
 			qmax = mtk_qmax_aging * 100;
@@ -783,9 +783,7 @@ static int battery_set_property(struct power_supply *psy,
 		charger_manager_set_input_suspend(val->intval);
 		break;
 	case POWER_SUPPLY_PROP_HIZ_ENABLE:
-#ifdef CONFIG_TARGET_PRODUCT_SELENE
 		charger_manager_set_hiz_enable(val->intval);
-#endif
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
 		charger_manager_set_prop_system_temp_level(val->intval);
@@ -912,10 +910,10 @@ void battery_update(struct battery_data *bat_data)
 	bool chg_done = false;
 
 	if (!primary_charger) {
-		pr_err("primary_charger is NULL\n");
+		pr_debug("primary_charger is NULL\n");
 		primary_charger = get_charger_by_name("primary_chg");
 		if (!primary_charger) {
-			pr_err("primary_charger is NULL again\n");
+			pr_debug("primary_charger is NULL again\n");
 			return;
 		}
 	}
@@ -4267,7 +4265,7 @@ static int battery_callback(
 #endif
 				notify_fg_chr_full();
 			battery_update(&battery_main);
-			pr_err("battery is full\n");
+			pr_debug("battery is full\n");
 		}
 		break;
 	case CHARGER_NOTIFY_START_CHARGING:
@@ -4689,17 +4687,17 @@ static void otg_boost_limit_work(struct work_struct *work)
 		fgcurrent = 0 - fgcurrent;
 
 	current_now = fgcurrent * 100;
-	pr_err("dhx--state:%d--current now = %d\n", b_ischarging, current_now);
+	pr_debug("dhx--state:%d--current now = %d\n", b_ischarging, current_now);
 	if (!primary_charger) {
-		pr_err("primary_charger is NULL\n");
+		pr_debug("primary_charger is NULL\n");
 		primary_charger = get_charger_by_name("primary_chg");
 		if (!primary_charger) {
-			pr_err("primary_charger is NULL again\n");
+			pr_debug("primary_charger is NULL again\n");
 			return;
 		}
 	}
 	if (otg_limit == 1) {
-		pr_err("phone is to high skip batterty otg boost check\n");
+		pr_debug("phone is to high skip batterty otg boost check\n");
 		schedule_delayed_work(&otg_boost_current_work, msecs_to_jiffies(10000));
 		return;
 	}
@@ -4728,7 +4726,7 @@ static void otg_boost_limit_work(struct work_struct *work)
 #endif
 		charger_dev_set_otg_current(primary_charger, 1800000);
 		otg_ibat_limit = 0;
-		pr_err("dhx---set otg current 1.8A\n");
+		pr_debug("dhx---set otg current 1.8A\n");
 #ifndef CONFIG_TARGET_PRODUCT_SELENE
 	} else if (count_high == 6)	{
 #else
@@ -4736,7 +4734,7 @@ static void otg_boost_limit_work(struct work_struct *work)
 #endif
 		charger_dev_set_otg_current(primary_charger, 1000000);
 		otg_ibat_limit = 1;
-		pr_err("dhx---set otg current 1A\n");
+		pr_debug("dhx---set otg current 1A\n");
 	}
 	schedule_delayed_work(&otg_boost_current_work, msecs_to_jiffies(10000));
 }

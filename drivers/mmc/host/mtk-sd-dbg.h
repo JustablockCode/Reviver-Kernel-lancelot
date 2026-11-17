@@ -151,11 +151,29 @@ do { \
 #define MAGIC_CQHCI_DBG_TYPE_DCMD 60
 /* softirq type */
 #define MAGIC_CQHCI_DBG_TYPE_SIRQ 70
-void msdc_debug_set_host(struct mmc_host *mmc);
-int msdc_debug_proc_init(void);
-void dbg_add_host_log(struct mmc_host *mmc, int type, int cmd, int arg);
-void mmc_cmd_dump(char **buff, unsigned long *size, struct seq_file *m,
-		struct mmc_host *mmc, u32 latest_cnt);
-void msdc_dump_host_state(char **buff, unsigned long *size,
-		struct seq_file *m, struct msdc_host *host);
+struct mmc_host;
+
+static inline void msdc_debug_set_host(struct mmc_host *mmc)
+{
+}
+
+static inline int msdc_debug_proc_init(void)
+{
+	return 0;
+}
+
+static inline void dbg_add_host_log(struct mmc_host *mmc, int type,
+		int cmd, int arg)
+{
+}
+
+static inline void mmc_cmd_dump(char **buff, unsigned long *size,
+		struct seq_file *m, struct mmc_host *mmc, u32 latest_cnt)
+{
+}
+
+static inline void msdc_dump_host_state(char **buff, unsigned long *size,
+		struct seq_file *m, struct msdc_host *host)
+{
+}
 #endif

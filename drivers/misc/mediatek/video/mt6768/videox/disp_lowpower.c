@@ -1346,7 +1346,6 @@ void primary_display_sodi_rule_init(void)
 	/* enable sodi when display driver is ready */
 #ifndef CONFIG_FPGA_EARLY_PORTING
 	ddp_set_spm_mode(DDP_CG_MODE, NULL);
-	mtk_idle_disp_is_ready(true);
 #endif
 #endif
 }

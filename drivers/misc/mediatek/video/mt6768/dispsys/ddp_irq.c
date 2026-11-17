@@ -36,10 +36,12 @@
 #include <asm/arch_timer.h>
 
 /* IRQ log print kthread */
+#ifdef CONFIG_MTK_ENG_BUILD
 static struct task_struct *disp_irq_log_task;
 static wait_queue_head_t disp_irq_log_wq;
 static int disp_irq_log_module;
 static int disp_irq_rdma_underflow;
+#endif
 static int irq_init;
 
 static unsigned int cnt_rdma_underflow[2];
@@ -316,7 +318,9 @@ irqreturn_t disp_irq_handler(int irq, void *dev_id)
 			DDPERR("IRQ: WDMA%d underrun! cnt=%d\n", index,
 			       cnt_wdma_underflow[index]++);
 
+#ifdef CONFIG_MTK_ENG_BUILD
 			disp_irq_log_module |= 1 << module;
+#endif
 		}
 		/* clear intr */
 		DISP_CPU_REG_SET(DISP_REG_WDMA_INTSTA, ~reg_val);
@@ -376,7 +380,9 @@ irqreturn_t disp_irq_handler(int irq, void *dev_id)
 
 			DDPERR("IRQ: RDMA%d abnormal! cnt=%d\n",
 				index, cnt_rdma_abnormal[index]++);
+#ifdef CONFIG_MTK_ENG_BUILD
 			disp_irq_log_module |= 1 << module;
+#endif
 
 		}
 		if (reg_val & (1 << 4)) {
@@ -397,9 +403,11 @@ irqreturn_t disp_irq_handler(int irq, void *dev_id)
 					    DISP_RDMA_INDEX_OFFSET * index),
 			       DISP_REG_GET(DISP_REG_RDMA_OUT_LINE_CNT +
 					    DISP_RDMA_INDEX_OFFSET * index));
-			disp_irq_log_module |= 1 << module;
 			rdma_underflow_irq_cnt[index]++;
+#ifdef CONFIG_MTK_ENG_BUILD
+			disp_irq_log_module |= 1 << module;
 			disp_irq_rdma_underflow = 1;
+#endif
 		}
 		if (reg_val & (1 << 5)) {
 			DDPIRQ("IRQ: RDMA%d target line!\n", index);
@@ -475,14 +483,17 @@ irqreturn_t disp_irq_handler(int irq, void *dev_id)
 
 	disp_invoke_irq_callbacks(module, reg_val);
 
+#ifdef CONFIG_MTK_ENG_BUILD
 	if (disp_irq_log_module != 0)
 		wake_up_interruptible(&disp_irq_log_wq);
+#endif
 
 	mmprofile_log_ex(ddp_mmp_get_events()->DDP_IRQ,
 		MMPROFILE_FLAG_PULSE, module, reg_val);
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_MTK_ENG_BUILD
 static void disp_irq_rdma_underflow_aee_trigger(void)
 {
 	static unsigned long long last_timer;
@@ -549,6 +560,7 @@ static int disp_irq_log_kthread_func(void *data)
 	}
 	return 0;
 }
+#endif
 
 
 int disp_init_irq(void)
@@ -559,12 +571,14 @@ int disp_init_irq(void)
 	irq_init = 1;
 	DDPMSG("disp_init_irq\n");
 
+#ifdef CONFIG_MTK_ENG_BUILD
 	/* create irq log thread */
 	init_waitqueue_head(&disp_irq_log_wq);
 	disp_irq_log_task = kthread_create(disp_irq_log_kthread_func,
 		NULL, "ddp_irq_log_kthread");
 	if (IS_ERR(disp_irq_log_task))
 		DDPERR(" can not create disp_irq_log_task kthread\n");
+#endif
 
 	/* wake_up_process(disp_irq_log_task); */
 	return 0;
