@@ -37,13 +37,18 @@
     }
   },
   "nova_update_verification_20261117": {
-    "status": "source-ready; user build and device testing pending",
-    "kernel_build": false,
+    "status": "kernel built and signed package verified; device and manager build pending",
+    "kernel_build": true,
+    "build_method": "incremental",
+    "build_source_commit": "40133b4dce5560b19072e5ff3e75329ce6daca88",
     "manager_build": false,
     "device_test": false,
-    "cpu_spoof_4_19_preserved": true,
-    "kpm_backend_unchanged": true,
+    "packaged": true,
+    "package": "Reviver-Kernel-lancelot-sukisu-nova-susfs-kpm-20261117-1917.zip",
+    "package_sha256": "8730bcf67ffe61a21e71ae982c7b2fdb472d69c45da38164f96ad3cc4327cfdd",
+    "image_sha256": "f2ffd2d04ff736d70f63b1f2bdb87920203b65b3ce62dbe213b27bb43d2c800a",
+    "config_sha256": "ade187920dcb4aec21d228d6f0a164493b3a474121513ae62416471fb4be0395",
     "pushed": false,
-    "evidence": "KernelSU/REVIVER.md"
+    "evidence": "KernelSU/BUILD-20261117.md"
   }
 }

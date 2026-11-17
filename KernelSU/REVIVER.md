@@ -1,6 +1,6 @@
 # Reviver SukiSU Nova / SUSFS integration
 
-Updated 2026-11-17. **Source integration and configuration checks complete; kernel/manager compilation and device testing pending.** The user will build and test. No push, package or device operation was performed for this update.
+Updated 2026-11-17. **Kernel compilation, signed ZIP packaging and artifact verification passed at source `40133b4dce55`; manager compilation and device testing remain pending.** See [build report](BUILD-20261117.md). Nothing was pushed and no device operation was performed.
 
 ## Provenance
 
@@ -40,10 +40,14 @@ Mount hiding now uses upstream's post-open file-permission sequence-record filte
 
 ## Build and test handoff
 
-Run `./build.sh` from the surrounding workspace for a clean signed ZIP. It does not build the manager/ksud. Existing `out/` and AnyKernel3 image were left untouched by this source update; they still belong to the pre-Nova build and are not new artifacts.
+Run `./build.sh` from the surrounding workspace for a clean signed ZIP. It does not build the manager/ksud. The initial source update left existing artifacts intact; the subsequent authorized build refreshed the image and AnyKernel3 package. See the build report for hashes and backups.
 
-Configuration was resolved in a separate diagnostics directory, confirming KSU, ADBROOT, KPM, full kallsyms, all requested SUSFS features including PRIORITY_UID_FILTER, lancelot audio and NoMount. Static checks cover shared command/struct layouts, retained local source hashes, source dependencies and formatting. No compile or runtime success is claimed. First-party `git diff --check` and shell syntax checks pass. Imported third-party whitespace is preserved. Checkpatch on the imported kernel integration (including the generated common runner) reports674 style errors and1921 warnings; this is recorded evidence, not a clean checkpatch result or compiler failure.
+Configuration was resolved in a separate diagnostics directory, confirming KSU, ADBROOT, KPM, full kallsyms, all requested SUSFS features including PRIORITY_UID_FILTER, lancelot audio and NoMount. Static checks cover shared command/struct layouts, retained local source hashes, source dependencies and formatting. That initial source-only check did not establish compile/runtime success; subsequent kernel compile/package validation is recorded in the build report. Runtime testing remains pending. First-party `git diff --check` and shell syntax checks pass. Imported third-party whitespace is preserved. Checkpatch on the imported kernel integration (including the generated common runner) reports674 style errors and1921 warnings; this is recorded evidence, not a clean checkpatch result or compiler failure.
 
 For a manager source build, follow the vendored manager/ksud build tooling and supply its target binaries/assets. BuiltZygisk source and dependencies are included; the kernel build does not produce its userspace assets. No manager APK or Zygisk payload was built during this task.
 
 Device checks: boot/reboot, enforcing SELinux, Nova manager recognition, root grant/deny/profiles, all six extension capabilities, real KPM backend query/module behavior, CPU spoof, SUSFS path allow-list plus persistence and package-change refresh, priority UID filter, mount-file reads, NoMount/modules and safe mode. Also test hotspot, graphics, audio, camera, charging/USB and suspend. Keep the existing complete boot backups for recovery.
+
+## Completed directory hook port
+
+The first user build exposed obsolete susfs_get_data_path calls in readdir.c. Commit40133b4dce55 removes the retired backing-path handling from all5 native/compat wrappers, retaining the current inode/UID filter against the enumerated file superblock. The corrected source links and packages successfully; see BUILD-20261117.md.
