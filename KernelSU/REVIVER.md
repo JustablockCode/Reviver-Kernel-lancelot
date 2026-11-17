@@ -1,6 +1,6 @@
 # Reviver SukiSU Nova / SUSFS integration
 
-Updated 2026-11-17. **Kernel compilation, signed ZIP packaging and artifact verification passed at source `40133b4dce55`; manager compilation and device testing remain pending.** See [build report](BUILD-20261117.md). Nothing was pushed and no device operation was performed.
+Updated 2026-11-17. **Kernel compilation, signed ZIP packaging and artifact verification passed at source `40133b4dce55`; manager compilation and broader device testing remain pending. Initial runtime queries are documented in [device checks](DEVICE-20261117.md).** See [build report](BUILD-20261117.md). Nothing was pushed; subsequent read-only device checks are documented separately. No device writes, reboot or flashing.
 
 ## Provenance
 

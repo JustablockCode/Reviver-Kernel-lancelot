@@ -37,18 +37,21 @@
     }
   },
   "nova_update_verification_20261117": {
-    "status": "kernel built and signed package verified; device and manager build pending",
+    "status": "kernel/package verified; initial read-only boot/root/backend device checks passed; broader testing pending",
     "kernel_build": true,
     "build_method": "incremental",
     "build_source_commit": "40133b4dce5560b19072e5ff3e75329ce6daca88",
     "manager_build": false,
-    "device_test": false,
+    "device_test": true,
     "packaged": true,
     "package": "Reviver-Kernel-lancelot-sukisu-nova-susfs-kpm-20261117-1917.zip",
     "package_sha256": "8730bcf67ffe61a21e71ae982c7b2fdb472d69c45da38164f96ad3cc4327cfdd",
     "image_sha256": "f2ffd2d04ff736d70f63b1f2bdb87920203b65b3ce62dbe213b27bb43d2c800a",
     "config_sha256": "ade187920dcb4aec21d228d6f0a164493b3a474121513ae62416471fb4be0395",
     "pushed": false,
-    "evidence": "KernelSU/BUILD-20261117.md"
+    "evidence": "KernelSU/BUILD-20261117.md",
+    "device_test_scope": "initial read-only boot/root/config/extensions/SUSFS/KPM/NoMount queries; known baseline warning retained",
+    "full_device_validation": false,
+    "device_evidence": "KernelSU/DEVICE-20261117.md"
   }
 }
