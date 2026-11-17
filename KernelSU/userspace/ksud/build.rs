@@ -11,7 +11,7 @@ const PREPARED_BOOTSTRAP_OBJECT: &str = ".lkm_image_bootstrap.o";
 
 // Keep userspace version metadata tied to the vendor pin, not kernel Git.
 fn get_git_version() -> Result<(u32, String), std::io::Error> {
-    Ok((41100, "4.3.0-85d3b048-reviver".to_string()))
+    Ok((35004, "3.0.0-1439545f-reviver".to_string()))
 }
 
 fn configure_bindgen() {
@@ -215,7 +215,7 @@ fn main() {
         }
     };
     if env::var("KSU_PACKAGE_NAME").is_err() {
-        println!("cargo:rustc-env=KSU_PACKAGE_NAME=com.sukisu.ultra");
+        println!("cargo:rustc-env=KSU_PACKAGE_NAME=com.sukisu.nova");
     }
     println!("cargo:rustc-env=VERSION_CODE={code}");
     println!("cargo:rustc-env=VERSION_NAME={name}");

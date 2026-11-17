@@ -157,7 +157,7 @@ ifneq ($(findstring compare,$(ksu_netlink_cfg)),)
 ccflags-y += -DKSU_NETLINK_CFG_HAS_COMPARE=1
 endif
 
-KSU_PACKAGE_NAME ?= com.sukisu.ultra
+KSU_PACKAGE_NAME ?= com.sukisu.nova
 
 ccflags-y += -DKSU_PACKAGE_NAME=\"$(KSU_PACKAGE_NAME)\"
 

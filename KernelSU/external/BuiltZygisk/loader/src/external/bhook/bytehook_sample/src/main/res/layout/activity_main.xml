@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    tools:context=".MainActivity">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+        <TextView style="@style/Theme.TextView.Top"
+            android:text="adb logcat -s bytehook_tag" />
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/white"
+            android:orientation="vertical">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView style="@style/Theme.TextView.Title"
+                    android:text="unit test"  />
+
+                <Button style="@style/Theme.Button"
+                    android:id="@+id/unitTestHook"
+                    android:text="hook strlen()" />
+
+                <Button style="@style/Theme.Button"
+                    android:id="@+id/unitTestUnhook"
+                    android:text="unhook strlen()" />
+
+                <Button style="@style/Theme.Button.Red"
+                    android:id="@+id/unitTestLoad"
+                    android:text="dlopen libsample.so" />
+
+                <Button style="@style/Theme.Button.Red"
+                    android:id="@+id/unitTestUnload"
+                    android:text="dlclose libsample.so" />
+
+                <Button style="@style/Theme.Button.Red"
+                    android:id="@+id/unitTestRun"
+                    android:text="run" />
+
+                <TextView style="@style/Theme.TextView.Title"
+                    android:text="system test"  />
+
+                <Button style="@style/Theme.Button"
+                    android:id="@+id/systemtestTestHook"
+                    android:text="hook"
+                    tools:ignore="UsingOnClickInXml" />
+
+                <Button style="@style/Theme.Button"
+                    android:id="@+id/systemtestTestUnhook"
+                    android:text="unhook" />
+
+                <Button style="@style/Theme.Button.Red"
+                    android:id="@+id/systemtestTestRun"
+                    android:text="run" />
+
+                <TextView style="@style/Theme.TextView.Title"
+                    android:text="operation records"  />
+
+                <Button style="@style/Theme.Button"
+                    android:id="@+id/getRecords"
+                    android:text="get records (as a string)" />
+
+                <Button style="@style/Theme.Button"
+                    android:id="@+id/dumpRecords"
+                    android:text="dump records (to FD)" />
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

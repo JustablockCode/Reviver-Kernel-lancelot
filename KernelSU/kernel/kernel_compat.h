@@ -1,6 +1,10 @@
 #ifndef __KSU_H_KERNEL_COMPAT
 #define __KSU_H_KERNEL_COMPAT
 
+#ifndef __nocfi
+#define __nocfi
+#endif
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0)) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)) ||              \
     (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)) && (LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0))
 #ifdef HISI_SELINUX_EBITMAP_RO
@@ -154,7 +158,16 @@ static inline void ksu_kvfree(void *buf)
     else
         kfree(buf);
 }
+
+static inline void *ksu_kvmalloc_array(size_t n, size_t size, gfp_t flags)
+{
+    if (size && n > ((size_t)-1) / size)
+        return NULL;
+    return ksu_kvmalloc(n * size, flags);
+}
+
 #define kvmalloc ksu_kvmalloc
+#define kvmalloc_array ksu_kvmalloc_array
 #define kvfree ksu_kvfree
 #endif
 
@@ -253,7 +266,18 @@ __weak void groups_sort(struct group_info *group_info)
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 3, 0) || defined(KSU_HAS_MODERN_STATIC_KEY_INTERFACE)
 #define KSU_COMPAT_USE_STATIC_KEY
+#endif
 
+/* Capability gates for the vendored Reviver port. CPU spoof uses the local
+ * ARM64 4.19 implementation; upstream's generic implementation needs 5.10+.
+ * KPM retains upstream's effective 4.4+ gate and the injected local backend.
+ */
+#if defined(CONFIG_ARM64) && LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
+/* Reviver retains the native 4.19 implementation with separate HWCAP words. */
+#define KSU_CAN_USE_CPU_SPOOF
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0)
+#define KSU_CAN_USE_KPM
 #endif
 
 #endif

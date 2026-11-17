@@ -1,0 +1,374 @@
+#include "daemon.hpp"
+
+#include <linux/un.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+
+#include <atomic>
+#include <climits>
+
+#include "logging.hpp"
+#include "socket_utils.hpp"
+
+// Forward declaration of the shared memory layout since we cannot include the
+// Rust-side constants header directly here.
+namespace constants {
+constexpr size_t SHM_HASH_MAP_SIZE = 8192;
+
+struct ShmEntry {
+    std::atomic<uint32_t> uid;
+    std::atomic<uint32_t> flags;
+};
+
+struct ShmLayout {
+    std::atomic<uint32_t> version;
+    ShmEntry entries[SHM_HASH_MAP_SIZE];
+};
+
+static_assert(std::atomic<uint32_t>::is_always_lock_free);
+static_assert(alignof(std::atomic<uint32_t>) == alignof(uint32_t));
+static_assert(sizeof(ShmEntry) == sizeof(uint32_t) * 2);
+static_assert(sizeof(ShmLayout) == sizeof(uint32_t) * (1 + SHM_HASH_MAP_SIZE * 2));
+}  // namespace constants
+
+namespace zygiskd {
+static std::string TMP_PATH;
+static constants::ShmLayout *g_shm_base = nullptr;
+static bool g_shm_init_attempted = false;
+
+void Init(const char *path) { TMP_PATH = path; }
+
+void UnmapSharedMemory() {
+    if (g_shm_base) {
+        munmap(g_shm_base, sizeof(constants::ShmLayout));
+        g_shm_base = nullptr;
+    }
+}
+
+std::string GetTmpPath() { return TMP_PATH; }
+
+// Bounds how long a request can block on the daemon once connected. Without this,
+// a stalled or overloaded daemon leaves the caller (potentially a zygote/app
+// process mid-specialize) hung forever on read()/recvmsg(), since plain blocking
+// sockets have no deadline of their own.
+constexpr int kDaemonIoTimeoutMs = 3000;
+
+static void SetSocketTimeout(int fd, int timeout_ms) {
+    struct timeval tv{
+        .tv_sec = timeout_ms / 1000,
+        .tv_usec = (timeout_ms % 1000) * 1000,
+    };
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
+int Connect(uint8_t retry) {
+    int fd = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    struct sockaddr_un addr{
+        .sun_family = AF_UNIX,
+        .sun_path = {0},
+    };
+    auto socket_path = GetTmpPath() + kCPSocketName;
+    strcpy(addr.sun_path, socket_path.c_str());
+    socklen_t socklen = sizeof(addr);
+
+    while (retry--) {
+        int r = connect(fd, reinterpret_cast<struct sockaddr *>(&addr), socklen);
+        if (r == 0) {
+            SetSocketTimeout(fd, kDaemonIoTimeoutMs);
+            return fd;
+        }
+        if (retry) {
+            LOGW("retrying to connect to zygiskd, sleep 1s");
+            sleep(1);
+        }
+    }
+
+    close(fd);
+    return -1;
+}
+
+bool PingHeartbeat() {
+    UniqueFd fd = Connect(5);
+    if (fd == -1) {
+        PLOGE("connecting to zygiskd");
+        return false;
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::PingHeartbeat);
+    return true;
+}
+
+uint32_t GetProcessFlags(uid_t uid) {
+    if (!g_shm_init_attempted) {
+        g_shm_init_attempted = true;
+        UniqueFd shm_fd = UniqueFd(GetSharedMemoryFd());
+        if (shm_fd >= 0) {
+            void *mapped = mmap(nullptr, sizeof(constants::ShmLayout), PROT_READ, MAP_SHARED,
+                                shm_fd, 0);
+            if (mapped != MAP_FAILED) {
+                g_shm_base = static_cast<constants::ShmLayout *>(mapped);
+                LOGV("zygiskd: mapped shared memory cache for ProcessFlags");
+            } else {
+                PLOGE("mmap shared memory cache");
+            }
+        }
+    }
+
+    if (g_shm_base) {
+        uint32_t version_before = g_shm_base->version.load(std::memory_order_acquire);
+        if ((version_before & 1U) == 0) {
+            const size_t mask = constants::SHM_HASH_MAP_SIZE - 1;
+            size_t index = static_cast<size_t>(uid) & mask;
+            const size_t start = index;
+            bool found = false;
+            uint32_t cached_flags = 0;
+
+            do {
+                const uint32_t current_uid =
+                    g_shm_base->entries[index].uid.load(std::memory_order_relaxed);
+                if (current_uid == static_cast<uint32_t>(uid)) {
+                    cached_flags =
+                        g_shm_base->entries[index].flags.load(std::memory_order_relaxed);
+                    found = true;
+                    break;
+                }
+                if (current_uid == UINT32_MAX) {
+                    break;
+                }
+                index = (index + 1) & mask;
+            } while (index != start);
+
+            if (found) {
+                // Keep entry reads ahead of the validation load on weakly ordered CPUs.
+                std::atomic_thread_fence(std::memory_order_acquire);
+                uint32_t version_after =
+                    g_shm_base->version.load(std::memory_order_relaxed);
+                if (version_before == version_after) {
+                    return cached_flags;
+                }
+            }
+        }
+    }
+
+    UniqueFd fd = Connect(1);
+    if (fd == -1) {
+        PLOGE("GetProcessFlags");
+        return 0;
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::GetProcessFlags);
+    socket_utils::write_u32(fd, uid);
+    return socket_utils::read_u32(fd);
+}
+
+void CacheMountNamespace(pid_t pid) {
+    UniqueFd fd = Connect(1);
+    if (fd == -1) {
+        PLOGE("CacheMountNamespace");
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::CacheMountNamespace);
+    socket_utils::write_u32(fd, (uint32_t) pid);
+}
+
+// Returns the file descriptor >= 0 on success, or -1 on failure.
+int UpdateMountNamespace(MountNamespace type) {
+    UniqueFd fd = Connect(1);
+    if (fd == -1) {
+        PLOGE("UpdateMountNamespace");
+        return -1;
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::UpdateMountNamespace);
+    socket_utils::write_u8(fd, (uint8_t) type);
+
+    // Read Status Byte
+    uint8_t status = socket_utils::read_u8(fd);
+    // Handle Failure Case (Not Cached)
+    if (status == 0) {
+        // Daemon explicitly told us it doesn't have it.
+        return -1;
+    }
+    // Handle Success Case
+    int namespace_fd = socket_utils::recv_fd(fd);
+    if (namespace_fd < 0) {
+        PLOGE("UpdateMountNamespace: failed to receive fd");
+        return -1;
+    }
+
+    return namespace_fd;
+}
+
+std::vector<Module> ReadModules() {
+    std::vector<Module> modules;
+    UniqueFd fd = Connect(1);
+    if (fd == -1) {
+        PLOGE("ReadModules");
+        return modules;
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::ReadModules);
+    size_t len = socket_utils::read_usize(fd);
+    for (size_t i = 0; i < len; i++) {
+        std::string name = socket_utils::read_string(fd);
+        int module_fd = socket_utils::recv_fd(fd);
+        modules.emplace_back(name, module_fd);
+    }
+    return modules;
+}
+
+int ConnectCompanion(size_t index) {
+    int fd = Connect(1);
+    if (fd == -1) {
+        PLOGE("ConnectCompanion");
+        return -1;
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::RequestCompanionSocket);
+    socket_utils::write_usize(fd, index);
+    if (socket_utils::read_u8(fd) == 1) {
+        // Past this point the fd is handed to the module's own companion protocol,
+        // which may legitimately block far longer than our daemon handshake timeout.
+        SetSocketTimeout(fd, 0);
+        return fd;
+    } else {
+        close(fd);
+        return -1;
+    }
+}
+
+int ConnectZnCompanion(const std::string& lib_path) {
+    int fd = Connect(1);
+    if (fd == -1) {
+        PLOGE("ConnectZnCompanion");
+        return -1;
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::RequestZnCompanionSocket);
+    socket_utils::write_string(fd, lib_path);
+    if (socket_utils::read_u8(fd) == 1) {
+        // Same as ConnectCompanion: hand the fd back to the ZN module's own
+        // companion protocol unconstrained by our handshake timeout.
+        SetSocketTimeout(fd, 0);
+        return fd;
+    } else {
+        close(fd);
+        return -1;
+    }
+}
+
+std::vector<ZnPlanEntry> GetZnPlan(const std::string& process_name, const std::string& process_path,
+                                   uint8_t retry) {
+    std::vector<ZnPlanEntry> entries;
+    UniqueFd fd = Connect(retry);
+    if (fd == -1) {
+        PLOGE("GetZnPlan: Connect");
+        return entries;
+    }
+    if (!socket_utils::write_u8(fd, (uint8_t) SocketAction::GetZnPlan) ||
+        !socket_utils::write_string(fd, process_name) ||
+        !socket_utils::write_string(fd, process_path)) {
+        PLOGE("GetZnPlan: write request");
+        return entries;
+    }
+
+    size_t count = socket_utils::read_usize(fd);
+    for (size_t i = 0; i < count; ++i) {
+        std::string lib_path = socket_utils::read_string(fd);
+        uint8_t companion = socket_utils::read_u8(fd);
+        int memfd = socket_utils::recv_fd(fd);
+        if (memfd < 0) {
+            LOGE("GetZnPlan: failed to receive FD for module %s", lib_path.c_str());
+            continue;
+        }
+        entries.emplace_back(std::move(lib_path), companion != 0, memfd);
+    }
+    return entries;
+}
+
+void ReportZnModule(const std::string& lib_path, bool injected) {
+    UniqueFd fd = Connect(1);
+    if (fd == -1) {
+        PLOGE("ReportZnModule");
+        return;
+    }
+    if (!socket_utils::write_u8(fd, (uint8_t) SocketAction::ReportZnModule) ||
+        !socket_utils::write_string(fd, lib_path) ||
+        !socket_utils::write_u8(fd, injected ? 1 : 0)) {
+        PLOGE("ReportZnModule: write request");
+        return;
+    }
+    // Wait for the ack so the report is recorded before the process moves on (and possibly forks).
+    socket_utils::read_u8(fd);
+}
+
+int GetModuleDir(size_t index) {
+    UniqueFd fd = Connect(1);
+    if (fd == -1) {
+        PLOGE("GetModuleDir");
+        return -1;
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::GetModuleDir);
+    socket_utils::write_usize(fd, index);
+    return socket_utils::recv_fd(fd);
+}
+
+void ZygoteRestart() {
+    UniqueFd fd = Connect(1);
+    if (fd == -1) {
+        if (errno == ENOENT) {
+            LOGD("could not notify ZygoteRestart (maybe it hasn't been created)");
+        } else {
+            PLOGE("notify ZygoteRestart");
+        }
+        return;
+    }
+    if (!socket_utils::write_u8(fd, (uint8_t) SocketAction::ZygoteRestart)) {
+        PLOGE("request ZygoteRestart");
+    }
+}
+
+void SystemServerStarted() {
+    UniqueFd fd = Connect(1);
+    if (fd == -1) {
+        PLOGE("report system server started");
+    } else {
+        if (!socket_utils::write_u8(fd, (uint8_t) SocketAction::SystemServerStarted)) {
+            PLOGE("report system server started");
+        }
+    }
+}
+
+int GetSharedMemoryFd() {
+    UniqueFd fd = Connect(1);
+    if (fd == -1) {
+        PLOGE("GetSharedMemoryFd");
+        return -1;
+    }
+    socket_utils::write_u8(fd, (uint8_t) SocketAction::GetSharedMemoryFd);
+
+    const uint8_t status = socket_utils::read_u8(fd);
+    if (status == 0) {
+        return -1;
+    }
+
+    const int shm_fd = socket_utils::recv_fd(fd);
+    if (shm_fd < 0) {
+        PLOGE("GetSharedMemoryFd: recv_fd");
+        return -1;
+    }
+    return shm_fd;
+}
+
+bool RefreshModules() {
+    // Same retry budget as PingHeartbeat: a rearm can reach here immediately after the
+    // monitor forked the daemon, before it has bound its socket, and the whole point of
+    // this call is that nothing is injected until the snapshot is known to be current.
+    UniqueFd fd = Connect(5);
+    if (fd == -1) {
+        PLOGE("request RefreshModules");
+        return false;
+    }
+    if (!socket_utils::write_u8(fd, (uint8_t) SocketAction::RefreshModules)) {
+        PLOGE("request RefreshModules");
+        return false;
+    }
+    return socket_utils::read_u8(fd) == 1;
+}
+}  // namespace zygiskd

@@ -432,6 +432,9 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user 
         case CMD_SUSFS_ADD_SUS_PATH_LOOP:
             susfs_add_sus_path_loop(arg);
             return 0;
+        case CMD_SUSFS_SET_SUS_PATH_UID_FILTER:
+            susfs_set_sus_path_uid_filter(arg);
+            return 0;
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
          case CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS:
@@ -474,9 +477,11 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user 
             susfs_add_sus_map(arg);
             return 0;
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
+#ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
         case CMD_SUSFS_SET_PRIORITY_UID_FILTER:
             susfs_set_priority_uid_filter(arg);
             return 0;
+#endif // #ifdef CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER
         case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
             susfs_set_avc_log_spoofing(arg);
             return 0;
@@ -1038,7 +1043,7 @@ long ksu_supercall_handle_ioctl(const struct file *filp, unsigned int cmd, void 
     int i;
 
 #ifdef CONFIG_KSU_DEBUG
-    pr_info("ksu ioctl: cmd=0x%x from uid=%d\n", cmd, current_uid().val);
+    pr_info_ratelimited("ksu ioctl: cmd=0x%x from uid=%d\n", cmd, current_uid().val);
 #endif
 
     for (i = 0; ksu_ioctl_handlers[i].handler; i++) {
@@ -1046,7 +1051,7 @@ long ksu_supercall_handle_ioctl(const struct file *filp, unsigned int cmd, void 
             // Check permission first
             if (ksu_ioctl_handlers[i].perm_check && !ksu_ioctl_handlers[i].perm_check() &&
                 !(ksu_ioctl_handlers[i].allow_su_session && ksu_is_su_session_fd(filp))) {
-                pr_warn("ksu ioctl: permission denied for cmd=0x%x uid=%d\n", cmd, current_uid().val);
+                pr_warn_ratelimited("ksu ioctl: permission denied for cmd=0x%x uid=%d\n", cmd, current_uid().val);
                 return -EPERM;
             }
             // Execute handler
@@ -1054,7 +1059,7 @@ long ksu_supercall_handle_ioctl(const struct file *filp, unsigned int cmd, void 
         }
     }
 
-    pr_warn("ksu ioctl: unsupported command 0x%x\n", cmd);
+    pr_warn_ratelimited("ksu ioctl: unsupported command 0x%x\n", cmd);
     return -ENOTTY;
 }
 

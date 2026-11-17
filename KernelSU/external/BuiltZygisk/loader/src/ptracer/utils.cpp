@@ -1,0 +1,934 @@
+#include "utils.hpp"
+
+#include <dirent.h>
+#include <dlfcn.h>
+#include <elf.h>
+#include <fcntl.h>
+#include <libgen.h>
+#include <limits.h>
+#include <link.h>
+#include <sched.h>
+#include <sys/auxv.h>
+#include <sys/mman.h>
+#include <sys/ptrace.h>
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
+#include <sys/uio.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <array>
+#include <cinttypes>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ios>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "logging.hpp"
+
+/**
+ * @brief Scans and parses the /proc/[pid]/maps file for a given process.
+ * @param pid The process ID to scan, as a string ("self" is also valid).
+ * @return A vector of MapInfo structs, each representing a memory mapping.
+ */
+std::vector<MapInfo> MapInfo::Scan(const std::string &pid) {
+    std::vector<MapInfo> info;
+    std::string file_name = "/proc/" + pid + "/maps";
+    auto maps = std::unique_ptr<FILE, decltype(&fclose)>{fopen(file_name.c_str(), "r"), &fclose};
+
+    if (!maps) {
+        PLOGE("fopen %s", file_name.c_str());
+        return info;
+    }
+
+    char *line = nullptr;
+    size_t len = 0;
+    while (getline(&line, &len, maps.get()) > 0) {
+        // Line format: start-end perms offset dev:minor inode pathname
+        uintptr_t start, end, off;
+        ino_t inode;
+        unsigned int dev_major, dev_minor;
+        std::array<char, 5> perm{};  // rwxp\0
+        int path_off;
+
+        if (sscanf(line, "%" PRIxPTR "-%" PRIxPTR " %4s %" PRIxPTR " %x:%x %lu %n", &start, &end,
+                   perm.data(), &off, &dev_major, &dev_minor, &inode, &path_off) != 7) {
+            continue;
+        }
+
+        // Find the start of the pathname, skipping spaces.
+        while (path_off > 0 && isspace(line[path_off])) {
+            path_off++;
+        }
+
+        // Trim trailing newline from path.
+        if (auto nl = strchr(line + path_off, '\n'); nl != nullptr) {
+            *nl = '\0';
+        }
+
+        auto &ref = info.emplace_back(MapInfo{start, end, 0, perm[3] == 'p', off,
+                                              static_cast<dev_t>(makedev(dev_major, dev_minor)),
+                                              inode, line + path_off});
+        if (perm[0] == 'r') ref.perms |= PROT_READ;
+        if (perm[1] == 'w') ref.perms |= PROT_WRITE;
+        if (perm[2] == 'x') ref.perms |= PROT_EXEC;
+    }
+    free(line);
+    return info;
+}
+
+/**
+ * @brief Writes data to another process's memory using process_vm_writev.
+ * @return The number of bytes written, or -1 on error.
+ */
+ssize_t write_proc(int pid, uintptr_t remote_addr, const void *buf, size_t len) {
+    // The iovec struct's iov_base is a non-const void*, so we must cast away constness.
+    // This is safe as process_vm_writev treats the local iovec as a source.
+    struct iovec local{.iov_base = const_cast<void *>(buf), .iov_len = len};
+    struct iovec remote{.iov_base = (void *) remote_addr, .iov_len = len};
+
+    ssize_t bytes_written = process_vm_writev(pid, &local, 1, &remote, 1, 0);
+
+    if (bytes_written == -1) {
+        PLOGE("process_vm_writev to addr 0x%" PRIxPTR, remote_addr);
+    } else if (static_cast<size_t>(bytes_written) != len) {
+        LOGW("not fully written to 0x%" PRIxPTR ": wrote %zd, expected %zu", remote_addr,
+             bytes_written, len);
+    }
+    return bytes_written;
+}
+
+/**
+ * @brief Reads data from another process's memory using process_vm_readv.
+ * @return The number of bytes read, or -1 on error.
+ */
+ssize_t read_proc(int pid, uintptr_t remote_addr, void *buf, size_t len) {
+    struct iovec local{.iov_base = buf, .iov_len = len};
+    struct iovec remote{.iov_base = (void *) remote_addr, .iov_len = len};
+
+    ssize_t bytes_read = process_vm_readv(pid, &local, 1, &remote, 1, 0);
+
+    if (bytes_read == -1) {
+        PLOGE("process_vm_readv from addr 0x%" PRIxPTR, remote_addr);
+    } else if (static_cast<size_t>(bytes_read) != len) {
+        LOGW("not fully read from 0x%" PRIxPTR ": read %zd, expected %zu", remote_addr, bytes_read,
+             len);
+    }
+    return bytes_read;
+}
+
+// --- Register Manipulation (Architecture Specific) ---
+
+bool get_regs(int pid, struct user_regs_struct &regs) {
+#if defined(__x86_64__) || defined(__i386__)
+    if (ptrace(PTRACE_GETREGS, pid, 0, &regs) == -1) {
+        PLOGE("ptrace(PTRACE_GETREGS)");
+        return false;
+    }
+#elif defined(__aarch64__) || defined(__arm__) || defined(__riscv)
+    struct iovec iov = {.iov_base = &regs, .iov_len = sizeof(regs)};
+    if (ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov) == -1) {
+        PLOGE("ptrace(PTRACE_GETREGSET)");
+#if defined(__arm__)
+        if (ptrace(PTRACE_GETREGS, pid, 0, &regs) == -1) {
+            PLOGE("fallback to PTRACE_GETREGS");
+            return false;
+        }
+#else
+        return false;
+#endif
+    }
+#endif
+    return true;
+}
+
+bool set_regs(int pid, struct user_regs_struct &regs) {
+#if defined(__x86_64__) || defined(__i386__)
+    if (ptrace(PTRACE_SETREGS, pid, 0, &regs) == -1) {
+        PLOGE("ptrace(PTRACE_SETREGS)");
+        return false;
+    }
+#elif defined(__aarch64__) || defined(__arm__) || defined(__riscv)
+    struct iovec iov = {.iov_base = &regs, .iov_len = sizeof(regs)};
+    if (ptrace(PTRACE_SETREGSET, pid, NT_PRSTATUS, &iov) == -1) {
+        PLOGE("ptrace(PTRACE_SETREGSET)");
+#if defined(__arm__)
+        if (ptrace(PTRACE_SETREGS, pid, 0, &regs) == -1) {
+            PLOGE("fallback to PTRACE_SETREGS");
+            return false;
+        }
+#else
+        return false;
+#endif
+    }
+#endif
+    return true;
+}
+
+/**
+ * @brief Finds the memory region containing an address and formats its details.
+ * @param info A vector of memory maps for the process. Should be const.
+ * @param addr The address to look for.
+ * @return A formatted string like "/path/to/lib.so r-x", or "<unknown>".
+ */
+std::string get_addr_mem_region(const std::vector<MapInfo> &info, uintptr_t addr) {
+    for (const auto &map : info) {
+        if (map.start <= addr && map.end > addr) {
+            std::string result = map.path;
+            result += ' ';
+            result += (map.perms & PROT_READ) ? 'r' : '-';
+            result += (map.perms & PROT_WRITE) ? 'w' : '-';
+            result += (map.perms & PROT_EXEC) ? 'x' : '-';
+            return result;
+        }
+    }
+    return "<unknown>";
+}
+
+/**
+ * @brief Finds a suitable address within a module to use as a return address for remote calls.
+ *        This heuristic looks for the first non-executable segment of the library.
+ *        Using such an address ensures that when our remote call "returns", it traps
+ *        with a SIGSEGV instead of executing unknown code, allowing us to regain control.
+ */
+void *find_module_return_addr(const std::vector<MapInfo> &info, std::string_view suffix) {
+    for (const auto &map : info) {
+        if ((map.perms & PROT_EXEC) == 0 && map.path.ends_with(suffix)) {
+            return (void *) map.start;
+        }
+    }
+    return nullptr;
+}
+
+/**
+ * @brief Finds the base address of a loaded module (the first mapping with zero offset).
+ */
+void *find_module_base(const std::vector<MapInfo> &info, std::string_view suffix) {
+    for (const auto &map : info) {
+        if (map.offset == 0 && (map.path == suffix || map.path.ends_with(suffix))) {
+            return (void *) map.start;
+        }
+    }
+    return nullptr;
+}
+
+/**
+ * @brief Calculates the address of a function in a remote process.
+ *
+ * This works by finding the function's address in our own process (`dlopen`/`dlsym`),
+ * then finding the base address of its containing library in both our process and the
+ * remote process. The remote address is then calculated using the offset from the base.
+ * remote_sym = remote_base + (local_sym - local_base)
+ */
+static void *find_func_addr_from_loaded_module(const std::vector<MapInfo> &local_info,
+                                               const std::vector<MapInfo> &remote_info,
+                                               std::string_view module, std::string_view func) {
+    auto lib = dlopen(module.data(), RTLD_NOW);
+    if (lib == nullptr) {
+        LOGE("failed to open lib %s: %s", module.data(), dlerror());
+        return nullptr;
+    }
+
+    auto local_sym = reinterpret_cast<uintptr_t>(dlsym(lib, func.data()));
+    dlclose(lib);  // Close the library handle immediately to avoid resource leaks.
+    if (local_sym == 0) {
+        LOGE("failed to find sym %s in %s: %s", func.data(), module.data(), dlerror());
+        return nullptr;
+    }
+
+    auto local_base = (uintptr_t) find_module_base(local_info, module);
+    if (local_base == 0) {
+        LOGE("failed to find local base for module %s", module.data());
+        return nullptr;
+    }
+
+    auto remote_base = (uintptr_t) find_module_base(remote_info, module);
+    if (remote_base == 0) {
+        LOGE("failed to find remote base for module %s", module.data());
+        return nullptr;
+    }
+
+    uintptr_t remote_addr = remote_base + (local_sym - local_base);
+    LOGV("found remote %s!%s at 0x%" PRIxPTR " (local base 0x%" PRIxPTR ", remote base 0x%" PRIxPTR
+         ")",
+         module.data(), func.data(), remote_addr, local_base, remote_base);
+
+    return (void *) remote_addr;
+}
+
+static uintptr_t find_symbol_offset_from_file(std::string_view module, std::string_view func) {
+    std::string path(module);
+    int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd == -1) {
+        PLOGE("open %s", path.c_str());
+        return 0;
+    }
+
+    struct stat st {};
+    if (fstat(fd, &st) == -1 || st.st_size <= 0) {
+        PLOGE("stat %s", path.c_str());
+        close(fd);
+        return 0;
+    }
+
+    std::vector<char> file(static_cast<size_t>(st.st_size));
+    char *cursor = file.data();
+    size_t remaining = file.size();
+    while (remaining > 0) {
+        ssize_t nread = read(fd, cursor, remaining);
+        if (nread <= 0) {
+            PLOGE("read %s", path.c_str());
+            close(fd);
+            return 0;
+        }
+        cursor += nread;
+        remaining -= static_cast<size_t>(nread);
+    }
+    close(fd);
+
+    if (file.size() < sizeof(ElfW(Ehdr))) return 0;
+    const auto *ehdr = reinterpret_cast<const ElfW(Ehdr) *>(file.data());
+    if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) return 0;
+
+    if (ehdr->e_phoff + ehdr->e_phnum * sizeof(ElfW(Phdr)) > file.size() ||
+        ehdr->e_shoff + ehdr->e_shnum * sizeof(ElfW(Shdr)) > file.size()) {
+        return 0;
+    }
+
+    uintptr_t load_bias = 0;
+    const auto *phdrs = reinterpret_cast<const ElfW(Phdr) *>(file.data() + ehdr->e_phoff);
+    for (int i = 0; i < ehdr->e_phnum; ++i) {
+        if (phdrs[i].p_type == PT_LOAD) {
+            load_bias = static_cast<uintptr_t>(phdrs[i].p_vaddr - phdrs[i].p_offset);
+            break;
+        }
+    }
+
+    const auto *shdrs = reinterpret_cast<const ElfW(Shdr) *>(file.data() + ehdr->e_shoff);
+    for (int i = 0; i < ehdr->e_shnum; ++i) {
+        if (shdrs[i].sh_type != SHT_DYNSYM && shdrs[i].sh_type != SHT_SYMTAB) continue;
+        if (shdrs[i].sh_link >= ehdr->e_shnum || shdrs[i].sh_entsize == 0) continue;
+
+        const auto &strtab = shdrs[shdrs[i].sh_link];
+        if (shdrs[i].sh_offset + shdrs[i].sh_size > file.size() ||
+            strtab.sh_offset + strtab.sh_size > file.size()) {
+            continue;
+        }
+
+        const auto *symbols = reinterpret_cast<const ElfW(Sym) *>(file.data() + shdrs[i].sh_offset);
+        const char *strings = file.data() + strtab.sh_offset;
+        size_t count = shdrs[i].sh_size / shdrs[i].sh_entsize;
+        for (size_t j = 0; j < count; ++j) {
+            if (symbols[j].st_name >= strtab.sh_size) continue;
+            if (func == strings + symbols[j].st_name) {
+                return static_cast<uintptr_t>(symbols[j].st_value) - load_bias;
+            }
+        }
+    }
+
+    return 0;
+}
+
+static void *find_func_addr_from_file_module(const std::vector<MapInfo> &local_info,
+                                             const std::vector<MapInfo> &remote_info,
+                                             std::string_view module, std::string_view func) {
+    auto local_base = (uintptr_t) find_module_base(local_info, module);
+    if (local_base == 0) {
+        LOGE("failed to find local base for module %s", module.data());
+        return nullptr;
+    }
+
+    auto remote_base = (uintptr_t) find_module_base(remote_info, module);
+    if (remote_base == 0) {
+        LOGE("failed to find remote base for module %s", module.data());
+        return nullptr;
+    }
+
+    uintptr_t offset = find_symbol_offset_from_file(module, func);
+    if (offset == 0) {
+        LOGE("failed to find sym %s in %s", func.data(), module.data());
+        return nullptr;
+    }
+
+    uintptr_t remote_addr = remote_base + offset;
+    LOGV("found remote %s!%s at 0x%" PRIxPTR " (offset 0x%" PRIxPTR ")",
+         module.data(), func.data(), remote_addr, offset);
+    return (void *) remote_addr;
+}
+
+void *find_func_addr(const std::vector<MapInfo> &local_info,
+                     const std::vector<MapInfo> &remote_info, std::string_view module,
+                     std::string_view func) {
+    auto fallback_linker_dl_symbol = [&]() -> void * {
+        if (module != "libdl.so") return nullptr;
+
+        const char *linker_symbol = nullptr;
+        if (func == "dlopen") {
+            linker_symbol = "__dl_dlopen";
+        } else if (func == "dlsym") {
+            linker_symbol = "__dl_dlsym";
+        } else if (func == "dlerror") {
+            linker_symbol = "__dl_dlerror";
+        } else {
+            return nullptr;
+        }
+
+#if defined(__LP64__)
+        constexpr std::string_view linker = "/system/bin/linker64";
+#else
+        constexpr std::string_view linker = "/system/bin/linker";
+#endif
+
+        LOGV("falling back to linker symbol %s for libdl.so!%.*s", linker_symbol,
+             static_cast<int>(func.size()), func.data());
+        return find_func_addr_from_file_module(local_info, remote_info, linker, linker_symbol);
+    };
+
+    if (auto addr = find_func_addr_from_loaded_module(local_info, remote_info, module, func)) {
+        return addr;
+    }
+    return fallback_linker_dl_symbol();
+}
+
+// --- Remote Call Implementation ---
+
+// Most ABIs require the stack to be 16-byte aligned.
+constexpr uintptr_t STACK_ALIGN_MASK = ~0xf;
+
+void align_stack(struct user_regs_struct &regs, long preserve) {
+    regs.REG_SP = (regs.REG_SP - preserve) & STACK_ALIGN_MASK;
+}
+
+/**
+ * @brief Pushes a string onto the remote process's stack.
+ * @return The address of the string in the remote process, or 0 on failure.
+ */
+uintptr_t push_string(int pid, struct user_regs_struct &regs, const char *str) {
+    size_t len = strlen(str) + 1;
+    regs.REG_SP -= len;
+    align_stack(regs);  // Re-align after subtracting length.
+
+    uintptr_t remote_addr = regs.REG_SP;
+    if (write_proc(pid, remote_addr, str, len) != static_cast<ssize_t>(len)) {
+        LOGE("failed to write string '%s' to remote process", str);
+        return 0;  // Return 0 on failure.
+    }
+    LOGV("pushed string \"%s\" to 0x%" PRIxPTR, str, remote_addr);
+    return remote_addr;
+}
+
+/**
+ * @brief Executes a function in the remote process.
+ *
+ * This function is highly architecture-specific. It works by:
+ * 1.  Setting up the remote process's registers according to the platform's C calling convention
+ * (ABI).
+ * 2.  Pushing arguments onto the remote stack if necessary.
+ * 3.  Setting the return address register/stack to a specific `return_addr` (usually a
+ * non-executable address).
+ * 4.  Setting the instruction pointer to the `func_addr`.
+ * 5.  Continuing the process, which executes the function.
+ * 6.  Waiting for the process to trap (usually via SIGSEGV at our fake return address).
+ * 7.  Reading the function's return value from the appropriate register.
+ *
+ * @return The return value of the remote function, or 0 on failure. A function returning
+ * zero is indistinguishable from a failure by value alone, so a caller that needs to tell
+ * them apart passes `ok`.
+ */
+uintptr_t remote_call(int pid, struct user_regs_struct &regs, uintptr_t func_addr,
+                      uintptr_t return_addr, std::vector<long> &args, bool *ok) {
+    if (ok) *ok = false;
+    align_stack(regs);
+    LOGV("calling remote function 0x%" PRIxPTR " with %zu args, return to 0x%" PRIxPTR, func_addr,
+         args.size(), return_addr);
+
+#if defined(__x86_64__)
+    // ABI: rdi, rsi, rdx, rcx, r8, r9, then stack
+    if (args.size() > 0) regs.rdi = args[0];
+    if (args.size() > 1) regs.rsi = args[1];
+    if (args.size() > 2) regs.rdx = args[2];
+    if (args.size() > 3) regs.rcx = args[3];
+    if (args.size() > 4) regs.r8 = args[4];
+    if (args.size() > 5) regs.r9 = args[5];
+    if (args.size() > 6) {
+        size_t stack_args_size = (args.size() - 6) * sizeof(long);
+        regs.REG_SP -= stack_args_size;
+        if (write_proc(pid, regs.REG_SP, args.data() + 6, stack_args_size) !=
+            (ssize_t) stack_args_size) {
+            LOGE("failed to push stack arguments for x86_64 call");
+            return 0;
+        }
+    }
+    // Push return address
+    regs.REG_SP -= sizeof(long);
+    if (write_proc(pid, regs.REG_SP, &return_addr, sizeof(return_addr)) != sizeof(return_addr)) {
+        LOGE("failed to push return address for x86_64 call");
+        return 0;
+    }
+    regs.REG_IP = func_addr;
+
+#elif defined(__i386__)
+    // ABI: All arguments on stack, pushed in reverse order.
+    // Our vector is already in the correct order to write in one block.
+    if (!args.empty()) {
+        size_t stack_args_size = args.size() * sizeof(long);
+        regs.REG_SP -= stack_args_size;
+        if (write_proc(pid, regs.REG_SP, args.data(), stack_args_size) !=
+            (ssize_t) stack_args_size) {
+            LOGE("failed to push arguments for i386 call");
+            return 0;
+        }
+    }
+    // Push return address
+    regs.REG_SP -= sizeof(long);
+    if (write_proc(pid, regs.REG_SP, &return_addr, sizeof(return_addr)) != sizeof(return_addr)) {
+        LOGE("failed to write return addr for i386 call");
+        return 0;
+    }
+    regs.REG_IP = func_addr;
+
+#elif defined(__aarch64__)
+    // ABI: x0-x7, then stack
+    for (size_t i = 0; i < args.size() && i < 8; i++) {
+        regs.regs[i] = args[i];
+    }
+    if (args.size() > 8) {
+        size_t stack_args_size = (args.size() - 8) * sizeof(long);
+        regs.REG_SP -= stack_args_size;
+        if (write_proc(pid, regs.REG_SP, args.data() + 8, stack_args_size) !=
+            (ssize_t) stack_args_size) {
+            LOGE("failed to push stack arguments for aarch64 call");
+            return 0;
+        }
+    }
+    regs.regs[30] = return_addr;  // Link Register (LR)
+    regs.REG_IP = func_addr;
+
+#elif defined(__riscv) && __riscv_xlen == 64
+    // ABI: a0-a7, then stack
+    unsigned long *arg_regs[] = {&regs.a0, &regs.a1, &regs.a2, &regs.a3,
+                                 &regs.a4, &regs.a5, &regs.a6, &regs.a7};
+    for (size_t i = 0; i < args.size() && i < 8; i++) {
+        *arg_regs[i] = args[i];
+    }
+    if (args.size() > 8) {
+        size_t stack_args_size = (args.size() - 8) * sizeof(long);
+        regs.REG_SP -= stack_args_size;
+        if (write_proc(pid, regs.REG_SP, args.data() + 8, stack_args_size) !=
+            (ssize_t) stack_args_size) {
+            LOGE("failed to push stack arguments for riscv64 call");
+            return 0;
+        }
+    }
+    regs.ra = return_addr;  // Return Address (RA)
+    regs.REG_IP = func_addr;
+
+#elif defined(__arm__)
+    // ABI: r0-r3, then stack
+    for (size_t i = 0; i < args.size() && i < 4; i++) {
+        regs.uregs[i] = args[i];
+    }
+    if (args.size() > 4) {
+        size_t stack_args_size = (args.size() - 4) * sizeof(long);
+        regs.REG_SP -= stack_args_size;
+        if (write_proc(pid, (uintptr_t) regs.REG_SP, args.data() + 4, stack_args_size) !=
+            (ssize_t) stack_args_size) {
+            LOGE("failed to push stack arguments for arm call");
+            return 0;
+        }
+    }
+    regs.uregs[14] = return_addr;  // Link Register (LR)
+    regs.REG_IP = func_addr;       // Program Counter (PC)
+
+    // Handle Thumb vs ARM mode. The lowest bit of an address indicates Thumb mode.
+    // The PC register itself must not have this bit set. It's stored in the CPSR.
+    constexpr auto CPSR_T_MASK = 1lu << 5;
+    if ((regs.REG_IP & 1) != 0) {
+        // Thumb mode: remove LSB from PC and set T-bit in CPSR
+        regs.REG_IP &= ~1;
+        regs.uregs[16] |= CPSR_T_MASK;
+    } else {
+        // ARM mode: clear T-bit in CPSR
+        regs.uregs[16] &= ~CPSR_T_MASK;
+    }
+
+#else
+#error "Unsupported architecture for remote_call"
+#endif
+
+    if (!set_regs(pid, regs)) {
+        LOGE("remote_call: failed to set registers before call");
+        return 0;
+    }
+
+    ptrace(PTRACE_CONT, pid, 0, 0);
+    int status;
+    wait_for_trace(pid, &status, __WALL);  // wait_for_trace handles intermediate stops
+
+    if (!get_regs(pid, regs)) {
+        LOGE("remote_call: failed to get registers after call");
+        return 0;
+    }
+
+    // We expect the tracee to stop at our fake return address.
+    if (WIFSTOPPED(status) && static_cast<uintptr_t>(regs.REG_IP) == return_addr) {
+        LOGV("remote call returned, result: 0x%" PRIXPTR, (uintptr_t) regs.REG_RET);
+        if (ok) *ok = true;
+        return regs.REG_RET;
+    } else {
+        LOGE("process stopped unexpectedly after remote call: %s at ip=0x%" PRIXPTR
+             ", expected stop at 0x%" PRIXPTR,
+             parse_status(status).c_str(), (uintptr_t) regs.REG_IP, return_addr);
+        return 0;
+    }
+}
+
+// --- Process Management ---
+
+/**
+ * @brief Creates a fully detached daemon process using a double-fork.
+ *
+ * A double-fork ensures the final process is not a child of the original process,
+ * but rather a child of init (PID 1). This prevents it from becoming a zombie
+ * if the original parent exits without waiting for it.
+ *
+ * @return This function has different return values depending on which process is running:
+ *         - In the **original parent process**, it returns the PID of the first child (> 0).
+ *         - In the **final daemon (grandchild) process**, it returns 0.
+ *         - On an initial fork error, it returns -1.
+ */
+int fork_dont_care() {
+    pid_t pid = fork();
+    if (pid < 0) {
+        PLOGE("fork child");
+        return -1;  // Return -1 on the first fork failure.
+    }
+
+    if (pid > 0) {
+        // --- Original Parent Process ---
+        // The parent waits for the *first* child to exit. This first child exits
+        // almost immediately, allowing the parent to continue its work while the
+        // second child (the daemon) continues in the background. It then returns
+        // the PID of the child it forked, signaling to the caller that it is the parent.
+        int status;
+        waitpid(pid, &status, __WALL);
+        return pid;
+    }
+
+    // --- First Child Process ---
+    // This process exists only to spawn the final daemon process.
+    pid_t grandchild_pid = fork();
+    if (grandchild_pid < 0) {
+        PLOGE("fork grandchild");
+        exit(1);  // Exit with an error code if the second fork fails.
+    }
+
+    if (grandchild_pid > 0) {
+        // The first child has successfully forked the grandchild, so its job is
+        // done. It exits immediately. This orphans the grandchild, which is
+        // then adopted by the 'init' process (PID 1). This is the key to detachment.
+        exit(0);
+    }
+
+    // --- Second Child (Grandchild / Daemon) Process ---
+    // The second fork() call returned 0 to this process. Now, we return 0 from
+    // this function to let the new daemon's internal logic know that it is the
+    // child process and should begin its work.
+    return 0;
+}
+
+/**
+ * @brief Skips the currently trapped syscall for a tracee.
+ *
+ * When a tracee is stopped due to a PTRACE_EVENT_SECCOMP, it is paused *before*
+ * the syscall is executed. This function prevents the syscall from ever running
+ * by modifying the tracee's registers.
+ *
+ * It sets the syscall number register to -1, which is an invalid syscall number.
+ * The kernel recognizes this and skips the execution, causing the syscall to
+ * immediately return with -ENOSYS, without any side effects.
+ *
+ * For ARM/ARM64, it also uses architecture-specific ptrace requests as a
+ * fallback/alternative method to ensure the syscall is skipped. These might not
+alway
+s
+ * work on all kernel versions, so their errors are ignored.
+ *
+ * @param pid The process ID of the tracee.
+ */
+void tracee_skip_syscall(int pid) {
+    user_regs_struct regs;
+    if (!get_regs(pid, regs)) {
+        LOGE("tracee_skip_syscall: failed to get registers");
+        exit(1);
+    }
+
+    // Set the syscall number to an invalid value (-1).
+    // The kernel will see this and skip the syscall execution.
+    regs.REG_SYSNR = -1;
+
+    if (!set_regs(pid, regs)) {
+        LOGE("tracee_skip_syscall: failed to set registers to skip syscall");
+        exit(1);
+    }
+
+    // For ARM architectures, there are specific ptrace requests to modify the
+    // syscall number. We attempt these as well, but don't check for errors
+    // as they may not be supported on all kernels. The register modification
+    // above is the primary method.
+#if defined(__aarch64__)
+    int sysnr = -1;
+    struct iovec iov = {.iov_base = &sysnr, .iov_len = sizeof(sysnr)};
+    ptrace(PTRACE_SETREGSET, pid, NT_ARM_SYSTEM_CALL, &iov);
+#elif defined(__arm__)
+    ptrace(PTRACE_SET_SYSCALL, pid, 0, (void *) -1);
+#endif
+}
+
+/**
+ * @brief Waits for a ptrace event, handling seccomp events specifically.
+ *
+ * This is a wrapper around waitpid that handles EINTR and automatically
+ * continues the process after a PTRACE_EVENT_SECCOMP.
+ *
+ * @param pid The PID to wait for.
+ * @param status A pointer to an integer where the status will be stored.
+ * @param flags Flags for waitpid.
+ */
+void wait_for_trace(int pid, int *status, int flags) {
+    while (true) {
+        if (waitpid(pid, status, flags) == -1) {
+            if (errno == EINTR) {
+                continue;  // Interrupted by a signal, just retry.
+            }
+            PLOGE("waitpid(%d)", pid);
+            exit(1);
+        }
+
+        // Check if the stop was caused by a PTRACE_EVENT_SECCOMP.
+        // The event itself is the point: raising it overwrote ptrace_message with zero.
+        if (*status >> 8 == (SIGTRAP | (PTRACE_EVENT_SECCOMP << 8))) {
+            LOGV("seccomp event on pid %d cleared its ptrace event message", pid);
+            tracee_skip_syscall(pid);
+            ptrace(PTRACE_CONT, pid, 0, 0);
+            continue;  // Continue waiting for the next *real* stop event.
+        }
+
+        // If the process terminated or signaled instead of stopping, it's an error.
+        if (!WIFSTOPPED(*status)) {
+            LOGE("process %d did not stop as expected: %s", pid, parse_status(*status).c_str());
+            exit(1);
+        }
+
+        // It's a valid stop event that we need to handle, so we return.
+        return;
+    }
+}
+
+std::string parse_status(int status) {
+    char head[24];
+    snprintf(head, sizeof(head), "0x%x ", status);
+    std::string os = head;
+    char buf[96];
+    if (WIFEXITED(status)) {
+        snprintf(buf, sizeof(buf), "exited with %d", WEXITSTATUS(status));
+        os += buf;
+    } else if (WIFSIGNALED(status)) {
+        snprintf(buf, sizeof(buf), "signaled with %s(%d)", sigabbrev_np(WTERMSIG(status)),
+                 WTERMSIG(status));
+        os += buf;
+    } else if (WIFSTOPPED(status)) {
+        auto stop_sig = WSTOPSIG(status);
+        snprintf(buf, sizeof(buf), "stopped by signal=%s(%d),event=%s", sigabbrev_np(stop_sig),
+                 stop_sig, parse_ptrace_event(status));
+        os += buf;
+    } else {
+        os += "unknown";
+    }
+    return os;
+}
+
+/**
+ * @brief Gets the executable path of a process from /proc/[pid]/exe.
+ * @return The path to the executable, or an empty string on failure.
+ */
+std::string get_program(int pid) {
+    std::string path = "/proc/";
+    path += std::to_string(pid);
+    path += "/exe";
+    constexpr const auto SIZE = 256;
+    char buf[SIZE + 1];
+    auto sz = readlink(path.c_str(), buf, SIZE);
+    if (sz == -1) {
+        PLOGE("readlink /proc/%d/exe", pid);
+        return "";
+    }
+    buf[sz] = 0;
+    return buf;
+}
+
+bool atomic_write_file(const std::string &path, const std::string &data) {
+    std::string tmp_path = path + ".tmp";
+    int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+    if (fd == -1) {
+        PLOGE("open %s", tmp_path.c_str());
+        return false;
+    }
+    ssize_t written = write(fd, data.c_str(), data.size());
+    if (written == -1 || static_cast<size_t>(written) != data.size()) {
+        PLOGE("write %s", tmp_path.c_str());
+        close(fd);
+        unlink(tmp_path.c_str());
+        return false;
+    }
+    if (fsync(fd) == -1) {
+        PLOGE("fsync %s", tmp_path.c_str());
+        close(fd);
+        unlink(tmp_path.c_str());
+        return false;
+    }
+    close(fd);
+    if (rename(tmp_path.c_str(), path.c_str()) == -1) {
+        PLOGE("rename %s to %s", tmp_path.c_str(), path.c_str());
+        unlink(tmp_path.c_str());
+        return false;
+    }
+    return true;
+}
+
+/**
+ * @brief Returns the module directory, resolved once from /proc/self/exe
+ *        ($MODDIR/bin/zygisk-ptrace64 -> $MODDIR).
+ *
+ * Nothing the monitor needs may be named relative to the working directory. A hot install
+ * renames the live module directory into ksud's trash, so a monitor that inherited it keeps
+ * resolving to the retired copy until the next boot deletes it; the late-load entry point is
+ * a root shell, whose working directory is wherever the user happened to be. Pinned on first
+ * use so the answer stays the path the running binary was started from.
+ */
+const std::string &get_module_dir() {
+    static const std::string dir = [] {
+        char exe_path[PATH_MAX];
+        auto len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+        if (len == -1) {
+            PLOGE("readlink /proc/self/exe");
+            return std::string(".");
+        }
+        exe_path[len] = '\0';
+        // .../bin/zygisk-ptrace64 -> .../bin -> $MODDIR. Nesting is safe: bionic's dirname()
+        // returns a buffer it owns and accepts one back as input.
+        return std::string(dirname(dirname(exe_path)));
+    }();
+    return dir;
+}
+
+/**
+ * @brief Reads /proc/[pid]/comm, without the trailing newline.
+ */
+std::string get_comm(pid_t pid) {
+    std::string path = "/proc/" + std::to_string(pid) + "/comm";
+    auto file = std::unique_ptr<FILE, decltype(&fclose)>(fopen(path.c_str(), "re"), &fclose);
+    if (file == nullptr) return "";
+
+    char buf[64];
+    if (fgets(buf, sizeof(buf), file.get()) == nullptr) return "";
+
+    std::string comm(buf);
+    while (!comm.empty() && (comm.back() == '\n' || comm.back() == '\0')) {
+        comm.pop_back();
+    }
+    return comm;
+}
+
+/**
+ * @brief Reads /proc/[pid]/cmdline as the argument vector it stores.
+ */
+std::vector<std::string> read_cmdline(pid_t pid) {
+    std::vector<std::string> argv;
+    std::string path = "/proc/" + std::to_string(pid) + "/cmdline";
+    auto file = std::unique_ptr<FILE, decltype(&fclose)>(fopen(path.c_str(), "re"), &fclose);
+    if (file == nullptr) return argv;
+
+    // The arguments are NUL-separated. A process that rewrote argv[0] with a shorter name
+    // leaves the rest of the original block zeroed, so empty entries are dropped rather
+    // than reported as arguments.
+    std::string arg;
+    int ch;
+    while ((ch = fgetc(file.get())) != EOF) {
+        if (ch == '\0') {
+            if (!arg.empty()) argv.push_back(arg);
+            arg.clear();
+        } else {
+            arg.push_back(static_cast<char>(ch));
+        }
+    }
+    if (!arg.empty()) argv.push_back(arg);
+    return argv;
+}
+
+/**
+ * @brief Reads the parent pid from /proc/[pid]/status.
+ *
+ * Parsed from status rather than stat, whose second field is a parenthesised comm that may
+ * itself contain spaces and parentheses and so cannot be field-split safely.
+ */
+pid_t get_ppid(pid_t pid) {
+    std::string path = "/proc/" + std::to_string(pid) + "/status";
+    auto file = std::unique_ptr<FILE, decltype(&fclose)>(fopen(path.c_str(), "re"), &fclose);
+    if (file == nullptr) return -1;
+
+    char line[256];
+    while (fgets(line, sizeof(line), file.get()) != nullptr) {
+        int ppid = -1;
+        if (sscanf(line, "PPid: %d", &ppid) == 1) return ppid;
+    }
+    return -1;
+}
+
+/**
+ * @brief Finds every live process whose /proc/[pid]/exe resolves to the given path.
+ */
+std::vector<pid_t> find_processes_by_exe(std::string_view exe) {
+    std::vector<pid_t> found;
+
+    auto dir = std::unique_ptr<DIR, decltype(&closedir)>(opendir("/proc"), &closedir);
+    if (dir == nullptr) {
+        PLOGE("opendir /proc");
+        return found;
+    }
+
+    while (auto *entry = readdir(dir.get())) {
+        char *end_ptr = nullptr;
+        errno = 0;
+        long value = strtol(entry->d_name, &end_ptr, 10);
+        if (*end_ptr != '\0' || errno != 0 || value <= 0) continue;
+        auto pid = static_cast<pid_t>(value);
+
+        // Read the link directly instead of going through get_program(), which logs on
+        // every failure. Most /proc entries here are processes we cannot or need not
+        // inspect, so a failure is the normal case and not worth reporting.
+        std::string path = "/proc/" + std::string(entry->d_name) + "/exe";
+        char buf[PATH_MAX];
+        auto len = readlink(path.c_str(), buf, sizeof(buf) - 1);
+        if (len == -1) continue;
+        buf[len] = '\0';
+
+        if (exe == buf) found.push_back(pid);
+    }
+
+    return found;
+}
+
+/**
+ * @brief Tests whether a library whose path contains the given suffix is mapped into a process.
+ */
+bool has_library_mapped(pid_t pid, std::string_view suffix) {
+    for (const auto &info : MapInfo::Scan(std::to_string(pid))) {
+        if (info.path.find(suffix) != std::string::npos) return true;
+    }
+    return false;
+}

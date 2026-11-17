@@ -1,0 +1,49 @@
+{
+  "sukisu_kernel": {
+    "url": "https://github.com/SukiSU-Nova/SukiSU-Nova.git",
+    "branch": "builtin",
+    "sha": "4bec532dd447e2852aa8932afa768255350c103a"
+  },
+  "sukisu_userspace": {
+    "url": "https://github.com/SukiSU-Nova/SukiSU-Nova.git",
+    "branch": "main",
+    "sha": "1439545f12bffe0263690ba862139b70ee5f20cf"
+  },
+  "susfs": {
+    "url": "https://gitlab.com/simonpunk/susfs4ksu.git",
+    "branch": "gki-android12-5.10",
+    "sha": "784ac9e6fd49bb02499b5b60c57ccc9d0c680204",
+    "version": "2.4.0",
+    "local_port": "4.19 non-GKI"
+  },
+  "kernelpatch": {
+    "url": "https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch.git",
+    "branch": "main",
+    "sha": "1c5b608916357ac86a94cc736e235db1fac4a29d"
+  },
+  "manager_kpm_assets": {
+    "url": "https://github.com/SukiSU-Nova/SukiSU_patch.git",
+    "sha": "eec45788c9a115e5498040298133336d6b6071dd"
+  },
+  "builtzygisk": {
+    "url": "https://github.com/SukiSU-Nova/BuiltZygisk.git",
+    "sha": "dfe0b4d2cac3d91a72880b073c3f1d95bc8953d4",
+    "vendored": true,
+    "nested_pins": {
+      "loader/src/external/bhook": "025976e1d1925dd425493e232b0643f0bb11b4e9",
+      "loader/src/external/dobby": "c1da0315d7a2069bde2ab432e45d4ab6df91237a",
+      "loader/src/external/lsplt": "2cfb537d7e8588abefbd3ddc55cacf3188662f9e",
+      "loader/src/external/rv64hook": "de3f6dfc355fb7c96c3307ed015974f485f91d0d"
+    }
+  },
+  "nova_update_verification_20261117": {
+    "status": "source-ready; user build and device testing pending",
+    "kernel_build": false,
+    "manager_build": false,
+    "device_test": false,
+    "cpu_spoof_4_19_preserved": true,
+    "kpm_backend_unchanged": true,
+    "pushed": false,
+    "evidence": "KernelSU/REVIVER.md"
+  }
+}

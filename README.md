@@ -2,7 +2,7 @@
 
 Custom 4.19 kernel for the **Xiaomi Redmi 9 / lancelot**.
 
-Built with **SukiSU Ultra** and **SUSFS** support.
+Built with **SukiSU Nova** and **SUSFS** support.
 
 ---
 
@@ -20,13 +20,13 @@ Built with **SukiSU Ultra** and **SUSFS** support.
 
 ## ✨ Features
 
-* SukiSU Ultra support
-* SUSFS v2.3.0 support
+* SukiSU Nova support
+* SUSFS v2.4.0 support
 * SELinux Enforcing
 * Linux 4.19.325
 * NoMount
 * WireGuard
-* Sukisu extension features
+* SukiSU Nova extension features
 * AVC log spoofing
 * More later...
 
@@ -34,7 +34,7 @@ Built with **SukiSU Ultra** and **SUSFS** support.
 
 ## 📥 Downloads
 
-[SukiSU Ultra Manager](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases)
+[SukiSU Nova Manager](https://github.com/SukiSU-Nova/SukiSU-Nova/releases)
 
 ### Kernel Releases
 
@@ -53,7 +53,7 @@ Check the [Releases](https://github.com/JustablockCode/Reviver-Kernel-lancelot/r
 
 ## 📜 Credits
 
-* SukiSU Ultra
+* SukiSU Nova
 * SUSFS
 * Linux Kernel
 * mt6768-S for the original kernel source and its contributors

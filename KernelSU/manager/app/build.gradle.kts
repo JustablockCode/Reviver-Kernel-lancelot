@@ -25,8 +25,8 @@ val managerVersionCode = rootProject.extra["managerVersionCode"] as Int
 val managerVersionName = rootProject.extra["managerVersionName"] as String
 
 val isPrBuild = project.findProperty("IS_PR_BUILD")?.toString()?.toBoolean() ?: false
-val defaultManagerPackageName = if (isPrBuild) "com.sukisu.ultra.pr" else "com.sukisu.ultra"
-val defaultManagerName = if (isPrBuild) "SukiSU PR" else "SukiSU"
+val defaultManagerPackageName = if (isPrBuild) "com.sukisu.nova.pr" else "com.sukisu.nova"
+val defaultManagerName = if (isPrBuild) "SukiSU PR" else "SukiSU Nova"
 val managerPackageName = project.findProperty("KSU_PACKAGE_NAME")?.toString() ?: defaultManagerPackageName
 val managerName = project.findProperty("KSU_NAME")?.toString() ?: defaultManagerName
 
@@ -63,7 +63,7 @@ val baseCFlags = listOf(
 val baseCppFlags = baseCFlags + "-fno-rtti"
 
 android {
-    namespace = "com.sukisu.ultra"
+    namespace = "com.sukisu.nova"
 
     buildTypes {
         debug {
@@ -151,7 +151,7 @@ android {
         applicationId = managerPackageName
 
         buildConfigField("boolean", "IS_PR_BUILD", isPrBuild.toString())
-        val commit = "e67b14e6bbbbd3e67f24df658a01d3e73a64159c"
+        val commit = "1439545f12bffe0263690ba862139b70ee5f20cf"
         buildConfigField("String", "MANAGER_COMMIT", "\"$commit\"")
         resValue("string", "app_name", managerName)
 
@@ -174,6 +174,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = androidSourceCompatibility
         targetCompatibility = androidTargetCompatibility
     }
@@ -181,7 +182,14 @@ android {
 
 androidComponents {
     onVariants(selector().withBuildType("release")) {
-        it.packaging.resources.excludes.addAll(listOf("META-INF/**", "kotlin/**", "**.bin"))
+        it.packaging.resources.excludes.addAll(listOf(
+            "META-INF/**",
+            "kotlin/**",
+            "**.bin",
+            // Strip protobuf source files bundled by the protobuf runtime jar
+            "google/**",
+            "src/**",
+        ))
     }
 }
 
@@ -192,11 +200,31 @@ base {
 }
 
 dependencies {
+    // java.time and java.nio.file are used throughout the manager but only exist
+    // from Android 8.0; desugaring keeps them available on Android 7.
+    coreLibraryDesugaring(libs.desugar.jdk.libs.nio)
+
+    // Stable bridge shared with the optional assistant AAR.
+    implementation(project(":ai-api"))
+    implementation(libs.androidx.exifinterface)
+
+    // The assistant itself is optional: a drop-in app/libs/ai.aar wins,
+    // otherwise the :ai module is used when it is part of the build. Without
+    // either, the host compiles and AiFeatureBridge hides every AI entry.
+    val aiAar = file("libs/ai.aar")
+    val aiProject = findProject(":ai")
+    if (aiAar.isFile) {
+        implementation(files(aiAar))
+    } else if (aiProject != null) {
+        implementation(project(":ai"))
+    }
+
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.splashscreen)
 
     implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.compose.material.icons.core)
+    implementation(files("libs/material-icons-custom.jar"))
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
@@ -263,6 +291,9 @@ kotlin {
     }
 }
 
+// Resolved lazily at execution time; using AGP's providers also honours local.properties.
+val androidSdkDirectory = androidComponents.sdkComponents.sdkDirectory
+val androidNdkDirectory = androidComponents.sdkComponents.ndkDirectory
 val kpmToolsDir = layout.buildDirectory.dir("generated/kpmTools")
 val downloadKpmTools = tasks.register("downloadKpmTools") {
     description = "Download the latest KPM tools to bundle in the APK"
@@ -275,9 +306,34 @@ val downloadKpmTools = tasks.register("downloadKpmTools") {
             root.resolve("assets/kpm/kpimg").isFile
     }
     doLast {
-        val baseUrl = "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/eec45788c9a115e5498040298133336d6b6071dd/kpm"
-        val downloads = listOf("kptools-android", "kpimg").associateWith { name ->
+        val root = kpmToolsDir.get().asFile
+        val kptoolsOutput = root.resolve("jniLibs/arm64-v8a/libkptools.so")
+        val kpimgOutput = root.resolve("assets/kpm/kpimg")
+
+        // A pre-seeded copy wins: CI bakes the two files and copies them in after
+        // `gradle clean`, because none of the sources below is reachable from every
+        // builder. upToDateWhen only helps within a warm build directory, so check
+        // the files here as well.
+        if (kptoolsOutput.isFile && kpimgOutput.isFile &&
+            kptoolsOutput.length() > 1024 && kpimgOutput.length() > 1024
+        ) {
+            logger.lifecycle("Using existing KPM tools in $root")
+            return@doLast
+        }
+
+        // First entry wins: KPM_TOOLS_BASE_URL lets CI point at its own mirror, the
+        // second is the release assets of the KernelPatch mirror, and the last is
+        // upstream (raw.githubusercontent.com has no idea about repository
+        // renames, so the old ShirkNeko path would 404 there).
+        val baseUrls = buildList {
+            System.getenv("KPM_TOOLS_BASE_URL")?.takeIf { it.isNotBlank() }?.let(::add)
+            // Bump the version here when the bundled KPM tools are updated.
+            add("https://raw.githubusercontent.com/SukiSU-Nova/SukiSU_patch/eec45788c9a115e5498040298133336d6b6071dd/kpm")
+        }.distinct()
+
+        fun download(name: String, baseUrl: String): File {
             val target = temporaryDir.resolve(name)
+            target.delete()
             val url = "$baseUrl/$name"
             try {
                 val connection = URI(url).toURL().openConnection() as HttpURLConnection
@@ -287,44 +343,118 @@ val downloadKpmTools = tasks.register("downloadKpmTools") {
                     connection.useCaches = false
                     connection.setRequestProperty("User-Agent", "SukiSU-Manager-build")
                     check(connection.responseCode == HttpURLConnection.HTTP_OK) {
-                        "Cannot download $name: HTTP ${connection.responseCode}"
+                        "HTTP ${connection.responseCode}"
                     }
                     val expectedSize = connection.contentLengthLong
                     connection.inputStream.use { input ->
                         target.outputStream().use { input.copyTo(it) }
                     }
                     check(target.length() >= 1024 && (expectedSize < 0 || target.length() == expectedSize)) {
-                        "Incomplete KPM tool download: $name"
+                        "incomplete download (${target.length()} of $expectedSize bytes)"
                     }
                 } finally {
                     connection.disconnect()
                 }
             } catch (networkError: Exception) {
-                logger.warn("Java HTTPS download failed for $name; retrying with curl", networkError)
-                val process = ProcessBuilder("curl", "--fail", "--location", "--retry", "3", "--silent", "--show-error", "--output", target.absolutePath, url)
-                    .redirectErrorStream(true)
-                    .start()
+                logger.warn("Java HTTPS download failed for $url (${networkError.message}); retrying with curl")
+                val process = ProcessBuilder(
+                    "curl", "--fail", "--location", "--retry", "3", "--silent", "--show-error",
+                    "--output", target.absolutePath, url,
+                ).redirectErrorStream(true).start()
                 val output = process.inputStream.bufferedReader().use { it.readText() }
-                check(process.waitFor() == 0) { "Cannot download $name with curl: ${output.trim()}" }
-                check(target.length() >= 1024) { "Incomplete KPM tool download: $name" }
-            }
-                if (name == "kptools-android") {
-                    val header = target.inputStream().use { it.readNBytes(4) }
-                    check(header.contentEquals(byteArrayOf(0x7f.toByte(), 0x45, 0x4c, 0x46))) {
-                        "Downloaded kptools-android is not an ELF file"
-                    }
-                    logger.warn("kptools-android architecture check skipped; verify it is ARM64 before releasing")
+                check(process.waitFor() == 0 && target.length() >= 1024) {
+                    "curl failed for $url: ${output.trim()}"
                 }
-                logger.lifecycle("Downloaded $name (${target.length()} bytes)")
-                target
             }
+            return target
+        }
+
+        // Try each mirror in order; only the first one that yields both files wins.
+        val sources = LinkedHashMap<String, File>()
+        var lastError: Exception? = null
+        for (baseUrl in baseUrls) {
+            try {
+                val kptools = download("kptools-android", baseUrl)
+                val kpimg = download("kpimg", baseUrl)
+                sources["kptools-android"] = kptools
+                sources["kpimg"] = kpimg
+                logger.lifecycle("Using KPM tools from $baseUrl")
+                break
+            } catch (e: Exception) {
+                lastError = e
+                logger.warn("KPM tools not available from $baseUrl: ${e.message}")
+            }
+        }
+        check(sources.size == 2) {
+            "Cannot download the KPM tools from any mirror: ${lastError?.message}"
+        }
+
         // Publish only after both downloads have passed validation.
-        val root = kpmToolsDir.get().asFile
-        downloads.forEach { (name, source) ->
-            val relativePath = if (name == "kptools-android") "jniLibs/arm64-v8a/libkptools.so" else "assets/kpm/kpimg"
+        sources.forEach { (name, source) ->
+            val relativePath =
+                if (name == "kptools-android") "jniLibs/arm64-v8a/libkptools.so" else "assets/kpm/kpimg"
             val output = root.resolve(relativePath)
             check(output.parentFile.isDirectory || output.parentFile.mkdirs()) { "Cannot create $output" }
             source.copyTo(output, overwrite = true)
+            if (name == "kptools-android") {
+                // ELF magic plus e_machine: catching a wrong-architecture asset here is
+                // much cheaper than finding out on a device.
+                val header = output.inputStream().use { it.readNBytes(20) }
+                check(
+                    header.size >= 20 &&
+                        header[0] == 0x7f.toByte() && header[1] == 'E'.code.toByte() &&
+                        header[2] == 'L'.code.toByte() && header[3] == 'F'.code.toByte(),
+                ) { "Downloaded kptools-android is not an ELF file" }
+                val machine = (header[18].toInt() and 0xff) or ((header[19].toInt() and 0xff) shl 8)
+                check(machine == 0xb7) {
+                    "Downloaded kptools-android is not AArch64 (e_machine=0x${machine.toString(16)})"
+                }
+
+                val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+                val stripName = if (isWindows) "llvm-strip.exe" else "llvm-strip"
+                // Prefer AGP's NDK location, then the SDK/NDK environment variables. Never build a
+                // File from an empty string: an unset SDK simply means stripping is skipped.
+                val ndkCandidates = buildList {
+                    androidNdkDirectory.orNull?.asFile?.let(::add)
+                    val sdkDir = androidSdkDirectory.orNull?.asFile
+                        ?: System.getenv("ANDROID_HOME")?.takeIf { it.isNotBlank() }?.let { file(it) }
+                        ?: System.getenv("ANDROID_SDK_ROOT")?.takeIf { it.isNotBlank() }?.let { file(it) }
+                    if (sdkDir != null) {
+                        add(sdkDir.resolve("ndk/$androidCompileNdkVersion"))
+                        sdkDir.resolve("ndk").listFiles()?.filter { it.isDirectory }
+                            ?.sortedByDescending { it.name }?.forEach(::add)
+                        add(sdkDir.resolve("ndk-bundle"))
+                    }
+                    System.getenv("ANDROID_NDK_HOME")?.takeIf { it.isNotBlank() }?.let { file(it) }?.let(::add)
+                }
+                val stripExe = ndkCandidates.asSequence()
+                    .filter { it.isDirectory }
+                    .flatMap { ndk ->
+                        val prebuilt = ndk.resolve("toolchains/llvm/prebuilt")
+                        (prebuilt.listFiles() ?: emptyArray()).asSequence()
+                            .filter { it.isDirectory }
+                            .mapNotNull { it.resolve("bin/$stripName").takeIf { bin -> bin.isFile } }
+                    }
+                    .firstOrNull()
+                // A pre-seeded copy is already stripped, and stripping twice is harmless
+                // anyway, so this runs for both paths.
+                val cmd = if (stripExe != null) {
+                    listOf(stripExe.absolutePath, "--strip-all", output.absolutePath)
+                } else {
+                    listOf(stripName, "--strip-all", output.absolutePath)
+                }
+                runCatching {
+                    val proc = ProcessBuilder(cmd).redirectErrorStream(true).start()
+                    val procOutput = proc.inputStream.bufferedReader().use { it.readText() }
+                    if (proc.waitFor() == 0) {
+                        logger.lifecycle("Stripped $name: ${output.length()} bytes")
+                    } else {
+                        logger.warn("Strip failed on $name: $procOutput")
+                    }
+                }.onFailure {
+                    logger.warn("Could not execute strip on $name", it)
+                }
+            }
         }
     }
 }
