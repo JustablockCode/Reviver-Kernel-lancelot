@@ -192,13 +192,6 @@ static int dvfs_last_ovl_req = HRT_LEVEL_NUM - 1;
 static atomic_t delayed_trigger_kick = ATOMIC_INIT(0);
 static atomic_t od_trigger_kick = ATOMIC_INIT(0);
 
-/* record take mutex time */
-static unsigned long long mutex_time_start;
-static unsigned long long mutex_time_end;
-static unsigned long long mutex_time_end1;
-static long long mutex_time_period;
-static long long mutex_time_period1;
-
 unsigned int round_corner_offset_enable;
 #ifdef CONFIG_MTK_ROUND_CORNER_SUPPORT
 unsigned int lcm_corner_en;
@@ -264,9 +257,7 @@ struct display_primary_path_context *_get_context(void)
 
 void _primary_path_lock(const char *caller)
 {
-	dprec_logger_start(DPREC_LOGGER_PRIMARY_MUTEX, 0, 0);
 	disp_sw_mutex_lock(&(pgc->lock));
-	mutex_time_start = sched_clock();
 	pgc->mutex_locker = (char *)caller;
 }
 
@@ -274,26 +265,8 @@ void _primary_path_unlock(const char *caller)
 {
 	pgc->mutex_locker = NULL;
 
-	mutex_time_end = sched_clock();
-	mutex_time_period = mutex_time_end - mutex_time_start;
-	if (mutex_time_period > 300000000) {
-		DISPCHECK("mutex_release_timeout1 <%lld ns>\n",
-			mutex_time_period);
-		dump_stack();
-	}
-
 	disp_sw_mutex_unlock(&(pgc->lock));
 
-	mutex_time_end1 = sched_clock();
-	mutex_time_period1 = mutex_time_end1 - mutex_time_start;
-	if ((mutex_time_period < 300000000 && mutex_time_period1 > 300000000) ||
-	   (mutex_time_period < 300000000 && mutex_time_period1 < 0)) {
-		DISPCHECK("mutex_release_timeout2 <%lld ns>,<%lld ns>\n",
-			mutex_time_period1, mutex_time_period);
-		dump_stack();
-	}
-
-	dprec_logger_done(DPREC_LOGGER_PRIMARY_MUTEX, 0, 0);
 }
 
 static const char *session_mode_spy(unsigned int mode)
@@ -3389,37 +3362,6 @@ static int _ovl_fence_release_callback(unsigned long userdata)
 #endif
 	_primary_path_unlock(__func__);
 
-	/* check last ovl status: should be idle when config */
-	if (primary_display_is_video_mode() &&
-		!primary_display_is_decouple_mode()) {
-		unsigned int status;
-
-		cmdqBackupReadSlot(pgc->ovl_status_info, 0, &status);
-#ifdef DEBUG_OVL_CONFIG_TIME
-		unsigned int time_event = 0;
-		unsigned int time_event1 = 0;
-		unsigned int time_event2 = 0;
-
-		cmdqBackupReadSlot(pgc->ovl_config_time, 0, &time_event);
-		cmdqBackupReadSlot(pgc->ovl_config_time, 1, &time_event1);
-		cmdqBackupReadSlot(pgc->ovl_config_time, 2, &time_event2);
-		DISPMSG(
-			"ovl config time_event %d time_event1 %d time_event2 %d time1_diff  %d  time2_diff %d\n",
-			time_event, time_event1, time_event2,
-			time_event1 - time_event, time_event2 - time_event1);
-#endif
-		if (status & 0x1) {
-			/* ovl is not idle !! */
-			DISPERR("disp ovl status error!! stat=0x%x\n",
-			status);
-			/* disp_aee_print("ovl_stat 0x%x\n", status); */
-			mmprofile_log_ex(ddp_mmp_get_events()->primary_error,
-					 MMPROFILE_FLAG_PULSE, status, 0);
-			primary_display_diagnose();
-			ret = -1;
-		}
-	}
-
 	for (i = 0; i < PRIMARY_SESSION_INPUT_LAYER_COUNT; i++) {
 		int fence_idx = 0;
 		int subtractor = 0;
@@ -6338,7 +6280,6 @@ static bool disp_rsz_frame_has_rsz_layer(struct disp_frame_cfg_t *cfg)
 {
 	int i = 0;
 	bool rsz = false;
-	int path = 0;
 
 	for (i = 0; i < cfg->input_layer_num; i++) {
 		struct disp_input_config *input_cfg = &cfg->input_cfg[i];
@@ -6351,16 +6292,6 @@ static bool disp_rsz_frame_has_rsz_layer(struct disp_frame_cfg_t *cfg)
 			rsz = true;
 			break;
 		}
-	}
-
-	path = HRT_GET_PATH_ID(HRT_GET_PATH_SCENARIO(cfg->overlap_layer_num));
-	if ((path != 2 && path != 3 && path != 4) && (rsz == true)) {
-		struct disp_input_config *c = &cfg->input_cfg[i];
-
-		DISPERR("not RPO but L%d(%u,%u,%ux%u)->(%u,%u,%ux%u)\n",
-			i, c->src_offset_x, c->src_offset_y, c->src_width,
-			c->src_height, c->tgt_offset_x, c->tgt_offset_y,
-			c->tgt_width, c->tgt_height);
 	}
 
 	return rsz;

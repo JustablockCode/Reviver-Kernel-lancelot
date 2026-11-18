@@ -147,6 +147,39 @@ static long alsps_factory_unlocked_ioctl(struct file *file, unsigned int cmd,
 			return -EINVAL;
 		}
 		return 0;
+
+    case ALSPS_ALS_SET_CALI_0LUX:
+		if (copy_from_user(&als_cali, ptr, sizeof(als_cali)))
+			return -EFAULT;
+		if (alsps_factory.fops != NULL &&
+		    alsps_factory.fops->als_set_cali_0lux != NULL) {
+			err = alsps_factory.fops->als_set_cali_0lux(als_cali);
+			if (err < 0) {
+				pr_err("ALSPS_ALS_SET_CALI FAIL!\n");
+				return -EINVAL;
+			}
+		} else {
+			pr_err("ALSPS_ALS_SET_CALI NULL\n");
+			return -EINVAL;
+		}
+		return 0;
+
+	case ALSPS_SET_PS_FACTORY_FLAG:
+		if (copy_from_user(&data, ptr, sizeof(data)))
+			return -EFAULT;
+		if (alsps_factory.fops != NULL &&
+		    alsps_factory.fops->ps_set_factory_flag != NULL) {
+			err = alsps_factory.fops->ps_set_factory_flag(data);
+			if (err < 0) {
+				pr_err("ALSPS_SET_PS_FACTORY_FLAG FAIL!\n");
+				return -EINVAL;
+			}
+		} else {
+			pr_err("ALSPS_SET_PS_FACTORY_FLAG NULL\n");
+			return -EINVAL;
+		}
+		return 0;
+
 	case ALSPS_GET_PS_TEST_RESULT:
 		if (alsps_factory.fops != NULL &&
 		    alsps_factory.fops->ps_get_data != NULL) {
@@ -278,9 +311,13 @@ static long alsps_factory_unlocked_ioctl(struct file *file, unsigned int cmd,
 	case ALSPS_PS_ENABLE_CALI:
 		if (alsps_factory.fops != NULL &&
 			alsps_factory.fops->ps_enable_calibration != NULL) {
-			err = alsps_factory.fops->ps_enable_calibration();
+			err = alsps_factory.fops->ps_enable_calibration(data);
 			if (err < 0) {
 				pr_err("ALSPS_PS_ENABLE_CALI FAIL!\n");
+                if ((err == -EACCES) || (err == -EAGAIN) || (err == -EBUSY)){
+                    pr_err("ALSPS_PS_ENABLE_CALI FAIL! Special return value, directly returned to the upper layer\n");
+                    return err;
+                }
 				return -EINVAL;
 			}
 		} else {

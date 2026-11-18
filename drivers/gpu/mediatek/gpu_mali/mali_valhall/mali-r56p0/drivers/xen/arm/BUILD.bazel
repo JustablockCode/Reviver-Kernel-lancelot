@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
+#
+# (C) COPYRIGHT 2023-2025 ARM Limited. All rights reserved.
+#
+# This program is free software and is provided to you under the terms of the
+# GNU General Public License version 2 as published by the Free Software
+# Foundation, and any use by you of this program is subject to the terms
+# of such GNU license.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, you can access it online at
+# http://www.gnu.org/licenses/gpl-2.0.html.
+#
+#
+
+load(
+    "@kleaf//build/kernel/kleaf:kernel.bzl",
+    "ddk_headers",
+    "ddk_module",
+    "kernel_module_group",
+)
+load("//config:cflags.bzl", "CFLAGS_MODULE", "COPTS_KBASE")
+
+package(
+    default_visibility = [
+        "//:__subpackages__",
+        "@kleaf//common:__pkg__",
+    ],
+)
+
+ddk_headers(
+    name = "mali_kernel_headers",
+    hdrs = [
+        "//:kernel_headers",
+        "@kleaf//common:all_headers",
+    ],
+)
+
+kernel_module_group(
+    name = "xen_module",
+    srcs = [
+        ":mali_arbif_xenback",
+        ":mali_arbif_xenfront",
+    ],
+)
+
+filegroup(
+    name = "xen_defconfig",
+    srcs = ["//config/fragment:xen.fragment"],
+)
+
+filegroup(
+    name = "xen_kconfig",
+    srcs = ["Kconfig"],
+)
+
+ddk_module(
+    name = "mali_arbif_xenback",
+    srcs = glob([
+        "mali_arbif_xenback/*.c",
+        "mali_arbif_xenback/*.S",
+    ]),
+    out = "mali_arbif_xenback.ko",
+    hdrs = glob(["mali_arbif_xenback/*.h"]) + [
+        ":mali_kernel_headers",
+    ],
+    copts = CFLAGS_MODULE + COPTS_KBASE,
+    defconfig = "//drivers/gpu/arm/arbitration:arbitration_defconfig",
+    kconfig = "//drivers/gpu/arm:gpu_kconfig",
+    kernel_build = "@kleaf//common:kernel",
+)
+
+ddk_module(
+    name = "mali_arbif_xenfront",
+    srcs = glob(["mali_arbif_xenfront/*.c"]),
+    out = "mali_arbif_xenfront.ko",
+    hdrs = glob(["mali_arbif_xenfront/*.h"]) + [
+        ":mali_kernel_headers",
+    ],
+    copts = CFLAGS_MODULE + COPTS_KBASE,
+    defconfig = "//drivers/gpu/arm/arbitration:arbitration_defconfig",
+    kconfig = "//drivers/gpu/arm:gpu_kconfig",
+    kernel_build = "@kleaf//common:kernel",
+)

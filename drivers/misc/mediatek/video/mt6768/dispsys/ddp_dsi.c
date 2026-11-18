@@ -297,6 +297,7 @@ static const char *_dsi_vdo_mode_parse_state(unsigned int state)
 
 enum DSI_STATUS DSI_DumpRegisters(enum DISP_MODULE_ENUM module, int level)
 {
+#ifdef CONFIG_MTK_ENG_BUILD
 	u32 i = 0;
 	u32 k = 0;
 
@@ -379,6 +380,7 @@ enum DSI_STATUS DSI_DumpRegisters(enum DISP_MODULE_ENUM module, int level)
 #endif
 		}
 	}
+#endif
 
 	return DSI_STATUS_OK;
 }
@@ -1008,7 +1010,9 @@ void DSI_Config_VDO_Timing_with_DSC(enum DISP_MODULE_ENUM module,
 		t_hbp = 4;
 		ps_wc = dsi_params->horizontal_active_pixel * dsiTmpBufBpp / 8;
 		t_hbllp = 16 * dsi_params->LANE_NUM;
-		ap_tx_total_word_cnt = (get_bdg_line_cycle() * lanes * RXTX_RATIO + 99) / 100;
+/* Huaqin modify for K19S-31 by jiangyue at 2022/01/14 start */
+		ap_tx_total_word_cnt = (get_bdg_line_cycle() * lanes * get_bdg_rxtx_ratio() + 99) / 100;
+/* Huaqin modify for K19S-31 by jiangyue at 2022/01/14 end */
 
 		switch (dsi_params->mode) {
 		case DSI_CMD_MODE:

@@ -40,7 +40,6 @@ obj-$(CONFIG_SND_SOC_MT6853) += mt6853/
 obj-$(CONFIG_SND_SOC_MT6833) += mt6833/
 obj-$(CONFIG_SND_SOC_MT6885) += mt6885/
 obj-$(CONFIG_SND_SOC_MT6781) += mt6781/
-obj-$(CONFIG_SND_SOC_AW87519) += aw87519/
 
 # mtk new arch
 ifeq ($(CONFIG_MTK_SND_SOC_NEW_ARCH),)
@@ -107,10 +106,6 @@ subdir-ccflags-y += -DAUDIO_USING_WRAP_DRIVER
 subdir-ccflags-y += -D_MT_IDLE_HEADER
 subdir-ccflags-y += -D_REG_SYNC_WRITE
 
-ifeq ($(CONFIG_SND_SOC_AW87519),y)
-subdir-ccflags-y += -DSND_SOC_AW87519
-endif
-
 # include path
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/accdet/mt6358
 subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/include
@@ -161,3 +156,8 @@ else
   subdir-ccflags-y += -I$(src)/$(AUDIO_PLATFORM)
 endif
 endif
+
+#for AWINIC AW87519 Smart K PA
+obj-$(CONFIG_SND_SOC_AW87519) += aw87519_audio.o
+obj-$(CONFIG_SND_SOC_AW87559) += aw87559/
+obj-$(CONFIG_SND_SOC_FS16XX) += fs1815n/

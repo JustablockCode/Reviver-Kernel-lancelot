@@ -9,8 +9,11 @@
 #include <linux/platform_device.h>
 
 #include <mt-plat/mtk_boot.h>
+#include <mt-plat/v1/mtk_battery.h>
 #include "mtk_charger_intf.h"
 #include "mtk_dual_switch_charging.h"
+extern enum hvdcp_status hvdcp_type_tmp;
+extern int call_mode;
 
 static int _uA_to_mA(int uA)
 {
@@ -150,7 +153,8 @@ dual_swchg_select_charging_current_limit(struct charger_manager *info)
 
 	if (info->atm_enabled == true && (info->chr_type == STANDARD_HOST ||
 	    info->chr_type == CHARGING_HOST)) {
-		pdata->input_current_limit = 100000; /* 100mA */
+		pdata->input_current_limit = 500000;
+		pdata->charging_current_limit = 500000;
 		goto done;
 	}
 
@@ -277,6 +281,30 @@ dual_swchg_select_charging_current_limit(struct charger_manager *info)
 					info->data.ac_charger_input_current;
 		pdata->charging_current_limit =
 					info->data.ac_charger_current;
+		switch (info->usb_psy->desc->type) {
+		case POWER_SUPPLY_TYPE_USB_HVDCP:
+		case POWER_SUPPLY_TYPE_USB_HVDCP_3:
+			if (hvdcp_type_tmp == HVDCP_3 &&
+				battery_get_vbus() <= 7000) {
+				pdata->input_current_limit = 3000000;
+				pdata->charging_current_limit = 3000000;
+			} else {
+				pdata->input_current_limit = 2000000;
+				pdata->charging_current_limit = 3000000;
+			}
+			break;
+
+		case POWER_SUPPLY_TYPE_USB_DCP:
+		default:
+			pdata->input_current_limit =
+			info->data.ac_charger_input_current;
+			pdata->charging_current_limit = 2000000;
+		break;
+		}
+		if (battery_get_bat_voltage() >= 4300)
+			pdata->charging_current_limit = 1000000;
+		if (info->battery_temp >= 35)
+			pdata->charging_current_limit = 1000000;
 		mtk_pe20_set_charging_current(info,
 					&pdata->charging_current_limit,
 					&pdata->input_current_limit);
@@ -429,6 +457,15 @@ dual_swchg_select_charging_current_limit(struct charger_manager *info)
 					pdata->input_current_limit_by_aicl;
 	}
 
+
+	if (call_mode != -1) { /* mtk_switch_charging */
+		if (pdata->input_current_limit > call_mode) {
+			pdata->input_current_limit = call_mode;
+			pdata->charging_current_limit = call_mode;
+			pr_err("call mode is %d\n", call_mode);
+		}
+	}
+
 done:
 	if (info->data.parallel_vbus) {
 		pdata->input_current_limit = pdata->input_current_limit / 2;
@@ -513,8 +550,10 @@ done:
 
 static void swchg_select_cv(struct charger_manager *info)
 {
-	u32 constant_voltage;
+	u32 constant_voltage = 4450000;
+	u32 dynamic_cv = 0;
 	bool chg2_chip_enabled = false;
+
 
 	charger_dev_is_chip_enabled(info->chg2_dev, &chg2_chip_enabled);
 
@@ -526,9 +565,13 @@ static void swchg_select_cv(struct charger_manager *info)
 		}
 
 	/* dynamic cv*/
-	constant_voltage = info->data.battery_cv;
-	mtk_get_dynamic_cv(info, &constant_voltage);
+	dynamic_cv = info->data.battery_cv;
+	mtk_get_dynamic_cv(info, &dynamic_cv);
+	if (constant_voltage > dynamic_cv) {
+			constant_voltage =  dynamic_cv;
+	}
 
+	// chr_err("%s, constant_voltage  = %d\n", __func__,constant_voltage);
 	charger_dev_set_constant_voltage(info->chg1_dev, constant_voltage);
 	/* Set slave charger's CV to 200mV higher than master's */
 	if (chg2_chip_enabled)
@@ -547,6 +590,8 @@ static void dual_swchg_turn_on_charging(struct charger_manager *info)
 
 	if (is_dual_charger_supported(info) == false)
 		chg2_enable = false;
+	if(charger_manager_is_input_suspend() == true)
+		chg1_enable = false;
 
 	if (swchgalg->state == CHR_ERROR) {
 		chg1_enable = false;

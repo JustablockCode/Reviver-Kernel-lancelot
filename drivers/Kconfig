@@ -226,4 +226,10 @@ source "drivers/slimbus/Kconfig"
 source "drivers/interconnect/Kconfig"
 
 source "drivers/energy_model/Kconfig"
+
+source "drivers/switch/Kconfig"
+
+source "drivers/nfc/Kconfig"
+
+source "drivers/p73-spi/Kconfig"
 endmenu

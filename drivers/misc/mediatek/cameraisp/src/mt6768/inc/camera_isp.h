@@ -16,7 +16,7 @@ extern void mt_irq_set_polarity(unsigned int irq, unsigned int polarity);
 /**
  * enforce kernel log enable
  */
-#define KERNEL_LOG
+//#define KERNEL_LOG
 #define ISR_LOG_ON
 
 #define SIG_ERESTARTSYS 512

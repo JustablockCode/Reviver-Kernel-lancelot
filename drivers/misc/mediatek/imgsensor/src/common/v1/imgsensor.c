@@ -4,6 +4,9 @@
  */
 
 #include "imgsensor_cfg_table.h"
+#if defined(CONFIG_TARGET_PRODUCT_MERLIN) || defined(CONFIG_TARGET_PRODUCT_LANCELOT) || defined(CONFIG_TARGET_PRODUCT_SELENE)
+#include "hq_imgsensor_hw_register_info.h"
+#endif
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/cdev.h>
@@ -14,6 +17,7 @@
 #include <linux/workqueue.h>
 #include <linux/init.h>
 #include <linux/types.h>
+#include <linux/hqsysfs.h>
 
 #undef CONFIG_MTK_SMI_EXT
 #ifdef CONFIG_MTK_SMI_EXT
@@ -594,7 +598,9 @@ int imgsensor_set_driver(struct IMGSENSOR_SENSOR *psensor)
 					    psensor->inst.sensor_idx,
 					    drv_idx,
 					    psensor_inst->psensor_name);
-
+#if defined(CONFIG_TARGET_PRODUCT_MERLIN) || defined(CONFIG_TARGET_PRODUCT_LANCELOT) || defined(CONFIG_TARGET_PRODUCT_SELENE)
+					hq_imgsensor_sensor_hw_register(psensor, psensor_inst);
+#endif
 					ret = drv_idx;
 					break;
 				}
@@ -1418,11 +1424,11 @@ static inline int adopt_CAMERA_HW_FeatureControl(void *pBuf)
 		if (ret != 0)
 			return ret;
 
-		pFeaturePara = kmalloc(FeatureParaLen, GFP_KERNEL);
+		pFeaturePara = kmalloc(FeatureParaLen + 32, GFP_KERNEL);
 		if (pFeaturePara == NULL)
 			return -ENOMEM;
 
-		memset(pFeaturePara, 0x0, FeatureParaLen);
+		memset(pFeaturePara, 0x0, FeatureParaLen + 32);
 	}
 
 	/* copy from user */

@@ -65,13 +65,27 @@ static const char * const power_supply_charge_type_text[] = {
 static const char * const power_supply_health_text[] = {
 	"Unknown", "Good", "Overheat", "Dead", "Over voltage",
 	"Unspecified failure", "Cold", "Watchdog timer expire",
-	"Safety timer expire", "Over current", "Warm", "Cool", "Hot"
+	"Safety timer expire"
 };
 
 static const char * const power_supply_technology_text[] = {
 	"Unknown", "NiMH", "Li-ion", "Li-poly", "LiFe", "NiCd",
 	"LiMn"
 };
+
+static const char * const power_supply_battery_type_text[] = {
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
+	"NVT_68K", "COSMX_100K", "Unknown"
+#else
+	"SWD_68K", "COSMX_100K", "NVT_68K", "SWD_330K", "secret", "Unknown"
+#endif
+};
+
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+static const char * const power_supply_battery_vendor_text[] = {
+	"SWD_68K", "COSMX_100K", "NVT_68K", "SWD_330K", "secret", "Unknown"
+};
+#endif
 
 static const char * const power_supply_capacity_level_text[] = {
 	"Unknown", "Critical", "Low", "Normal", "High", "Full"
@@ -102,6 +116,11 @@ static const char * const power_supply_usbc_pr_text[] = {
 
 static const char * const power_supply_typec_src_rp_text[] = {
 	"Rp-Default", "Rp-1.5A", "Rp-3A"
+};
+
+static const char * const typec_text[] = {
+		"Nothing attached", "Source attached",
+		"Sink attached",
 };
 
 static ssize_t power_supply_show_usb_type(struct device *dev,
@@ -158,8 +177,7 @@ static ssize_t power_supply_show_property(struct device *dev,
 					"driver has no data for `%s' property\n",
 					attr->attr.name);
 			else if (ret != -ENODEV && ret != -EAGAIN)
-				dev_err_ratelimited(dev,
-					"driver failed to report `%s' property: %zd\n",
+				dev_err(dev, "driver failed to report `%s' property: %zd\n",
 					attr->attr.name, ret);
 			return ret;
 		}
@@ -224,6 +242,12 @@ static ssize_t power_supply_show_property(struct device *dev,
 	case POWER_SUPPLY_PROP_MODEL_NAME ... POWER_SUPPLY_PROP_SERIAL_NUMBER:
 		ret = sprintf(buf, "%s\n", value.strval);
 		break;
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	case POWER_SUPPLY_PROP_BATTERY_VENDOR:
+		ret = sprintf(buf, "%s\n",
+				   power_supply_battery_vendor_text[value.intval]);
+		break;
+#endif
 	default:
 		ret = sprintf(buf, "%d\n", value.intval);
 	}
@@ -337,6 +361,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(temp),
 	POWER_SUPPLY_ATTR(temp_max),
 	POWER_SUPPLY_ATTR(temp_min),
+	POWER_SUPPLY_ATTR(temp_connect),
 	POWER_SUPPLY_ATTR(temp_alert_min),
 	POWER_SUPPLY_ATTR(temp_alert_max),
 	POWER_SUPPLY_ATTR(temp_ambient),
@@ -352,6 +377,11 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(precharge_current),
 	POWER_SUPPLY_ATTR(charge_term_current),
 	POWER_SUPPLY_ATTR(calibrate),
+	POWER_SUPPLY_ATTR(batt_id),
+	POWER_SUPPLY_ATTR(reverse_chg_otg),
+	POWER_SUPPLY_ATTR(reverse_chg_cc),
+	POWER_SUPPLY_ATTR(reverse_chg_status),
+	POWER_SUPPLY_ATTR(reverse_limit),
 	/* Local extensions */
 	POWER_SUPPLY_ATTR(usb_hc),
 	POWER_SUPPLY_ATTR(usb_otg),
@@ -367,6 +397,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(step_charging_step),
 	POWER_SUPPLY_ATTR(pin_enabled),
 	POWER_SUPPLY_ATTR(input_suspend),
+	POWER_SUPPLY_ATTR(hiz_enable),
 	POWER_SUPPLY_ATTR(input_voltage_regulation),
 	POWER_SUPPLY_ATTR(input_current_max),
 	POWER_SUPPLY_ATTR(input_current_trim),
@@ -384,6 +415,9 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(resistance),
 	POWER_SUPPLY_ATTR(resistance_capacitive),
 	POWER_SUPPLY_ATTR(resistance_id),
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	POWER_SUPPLY_ATTR(battery_id_voltage),
+#endif
 	POWER_SUPPLY_ATTR(resistance_now),
 	POWER_SUPPLY_ATTR(flash_current_max),
 	POWER_SUPPLY_ATTR(update_now),
@@ -511,6 +545,8 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(cc_toggle_enable),
 	POWER_SUPPLY_ATTR(fg_type),
 	POWER_SUPPLY_ATTR(charger_status),
+	POWER_SUPPLY_ATTR(chip_ok),
+	POWER_SUPPLY_ATTR(vbus_disable),
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_ATTR(charge_counter_ext),
 	POWER_SUPPLY_ATTR(charge_charger_state),
@@ -521,6 +557,9 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(battery_type),
 	POWER_SUPPLY_ATTR(cycle_counts),
 	POWER_SUPPLY_ATTR(serial_number),
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	POWER_SUPPLY_ATTR(battery_vendor),
+#endif
 };
 
 static struct attribute *
@@ -573,34 +612,21 @@ void power_supply_init_attrs(struct device_type *dev_type)
 		__power_supply_attrs[i] = &power_supply_attrs[i].attr;
 }
 
-static char *kstruprdup(const char *str, gfp_t gfp)
-{
-	char *ret, *ustr;
-
-	ustr = ret = kmalloc(strlen(str) + 1, gfp);
-
-	if (!ret)
-		return NULL;
-
-	while (*str)
-		*ustr++ = toupper(*str++);
-
-	*ustr = 0;
-
-	return ret;
-}
-
 int power_supply_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	struct power_supply *psy = dev_get_drvdata(dev);
 	int ret = 0, j;
 	char *prop_buf;
-	char *attrname;
+	char attrname[64];
+
+	dev_dbg(dev, "uevent\n");
 
 	if (!psy || !psy->desc) {
 		dev_dbg(dev, "No power supply yet\n");
 		return ret;
 	}
+
+	dev_dbg(dev, "POWER_SUPPLY_NAME=%s\n", psy->desc->name);
 
 	ret = add_uevent_var(env, "POWER_SUPPLY_NAME=%s", psy->desc->name);
 	if (ret)
@@ -612,7 +638,8 @@ int power_supply_uevent(struct device *dev, struct kobj_uevent_env *env)
 
 	for (j = 0; j < psy->desc->num_properties; j++) {
 		struct device_attribute *attr;
-		char *line;
+		const char *str;
+		char *line, *ustr;
 
 		attr = &power_supply_attrs[psy->desc->properties[j]];
 
@@ -637,14 +664,16 @@ int power_supply_uevent(struct device *dev, struct kobj_uevent_env *env)
 		if (line)
 			*line = 0;
 
-		attrname = kstruprdup(attr->attr.name, GFP_KERNEL);
-		if (!attrname) {
-			ret = -ENOMEM;
-			goto out;
-		}
+		str = attr->attr.name;
+		ustr = attrname;
+		while (*str)
+			*ustr++ = toupper(*str++);
+
+		*ustr = 0;
+
+		dev_dbg(dev, "prop %s=%s\n", attrname, prop_buf);
 
 		ret = add_uevent_var(env, "POWER_SUPPLY_%s=%s", attrname, prop_buf);
-		kfree(attrname);
 		if (ret)
 			goto out;
 	}

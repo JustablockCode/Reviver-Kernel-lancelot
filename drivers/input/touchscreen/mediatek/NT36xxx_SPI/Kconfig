@@ -1,0 +1,19 @@
+#
+# Novatek NT36xxx SPI touchscreen driver configuration
+#
+config TOUCHSCREEN_NT36xxx_SPI
+	bool "Novatek NT36xxx SPI driver"
+	default n
+	help
+	  Say Y here if you have a Novatek NT36xxx to your system by SPI bus.
+
+	  If unsure, say N.
+
+config TOUCHSCREEN_NT36xxx_SPI_MP_CTRLRAM
+	bool "Novatek NT36xxx SPI Multipoint Control RAM"
+	depends on TOUCHSCREEN_NT36xxx_SPI
+	default n
+	help
+	  Say Y here if you need to use Multipoint Control RAM Testing
+
+	  If unsure, say N.
