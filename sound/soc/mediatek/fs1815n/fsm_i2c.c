@@ -18,11 +18,11 @@
 #endif
 #if defined(CONFIG_REGULATOR)
 #include <linux/regulator/consumer.h>
-static struct regulator *g_fsm_vdd;
+static struct regulator *g_fsm_vdd = NULL;
 #endif
 
 static DEFINE_MUTEX(g_fsm_mutex);
-static struct device *g_fsm_pdev;
+static struct device *g_fsm_pdev = NULL;
 
 /* customize configrature */
 #include "fsm_firmware.c"
@@ -306,6 +306,9 @@ int fsm_set_monitor(fsm_dev_t *fsm_dev, bool enable)
 static int fsm_ext_reset(fsm_dev_t *fsm_dev)
 {
 	fsm_config_t *cfg = fsm_get_config();
+	uint16_t id = 0;
+	int addr;
+	int ret;
 
 	if (!cfg || !fsm_dev) {
 		return -EINVAL;
@@ -318,8 +321,25 @@ static int fsm_ext_reset(fsm_dev_t *fsm_dev)
 		fsm_delay_ms(10); // mdelay
 		gpio_set_value(fsm_dev->rst_gpio, 1);
 		fsm_delay_ms(1); // mdelay
-		cfg->reset_chip = true;
+		// TODO: for sharing reset pin in multi-pa application
+		// cfg->reset_chip = true;
 	}
+	fsm_mutex_lock();
+	/* soft reset */
+	addr = fsm_dev->i2c->addr;
+	ret = fsm_reg_read(fsm_dev, 0x01, &id);
+	if (ret && addr != 0x34) {
+		fsm_dev->i2c->addr = 0x34;
+		ret = fsm_reg_read(fsm_dev, 0x01, &id);
+	}
+	if (!ret && LOW8(id) == FS1815_DEV_ID) {
+		fsm_reg_write(fsm_dev, 0x10, 0x0002);
+		fsm_delay_ms(15);
+	} else {
+		ret = -ENODEV;
+	}
+	fsm_dev->i2c->addr = addr;
+	fsm_mutex_unlock();
 
 	return 0;
 }
@@ -411,36 +431,36 @@ static int fsm_request_irq(fsm_dev_t *fsm_dev)
 static int fsm_parse_dts(struct i2c_client *i2c, fsm_dev_t *fsm_dev)
 {
 	struct device_node *np = i2c->dev.of_node;
+	uint8_t dummy_addr;
+	char *str_name;
 	int ret;
 
 	if (fsm_dev == NULL || np == NULL) {
 		return -EINVAL;
 	}
 
+	str_name = devm_kzalloc(&i2c->dev, 32, GFP_KERNEL);
 	fsm_dev->rst_gpio = of_get_named_gpio(np, "fsm,rst-gpio", 0);
 	if (gpio_is_valid(fsm_dev->rst_gpio)) {
+		snprintf(str_name, 32, "FS1815_SDZ_%02X", i2c->addr);
 		ret = devm_gpio_request_one(&i2c->dev, fsm_dev->rst_gpio,
-			GPIOF_OUT_INIT_LOW, "FS16XX_RST");
+			GPIOF_OUT_INIT_LOW, str_name);
 		if (ret)
 			return ret;
 	}
-	fsm_dev->irq_gpio = of_get_named_gpio(np, "fsm,irq-gpio", 0);
-	if (gpio_is_valid(fsm_dev->irq_gpio)) {
-		ret = devm_gpio_request_one(&i2c->dev, fsm_dev->irq_gpio,
-			GPIOF_OUT_INIT_LOW, "FS16XX_IRQ");
-		if (ret)
-			return ret;
-	}
-	ret = of_property_read_u32(np, "fsm,re25-dft", &fsm_dev->re25_dft);
-	if (ret) {
-		fsm_dev->re25_dft = 0;
-	}
-	pr_info("re25 default:%d", fsm_dev->re25_dft);
+
+	ret = of_property_read_u8(np, "fsm,dummy-addr", &dummy_addr);
+	if (ret)
+		dummy_addr = 0;
+
+	fsm_dev->addr = dummy_addr;
 
 	return 0;
 }
 
 static struct of_device_id fsm_match_tbl[] = {
+	{ .compatible = "foursemi,fs16xx" },
+	{ .compatible = "foursemi,fs1815" },
 	{ .compatible = "foursemi,fs16xx_34" },
 	{ .compatible = "foursemi,fs16xx_35" },
 	{},
@@ -475,6 +495,7 @@ static int fsm_i2c_probe(struct i2c_client *i2c,
 	ret = fsm_parse_dts(i2c, fsm_dev);
 	if (ret) {
 		dev_err(&i2c->dev, "failed to parse DTS node");
+		return ret;
 	}
 #endif
 #if defined(CONFIG_FSM_REGMAP)
@@ -494,6 +515,8 @@ static int fsm_i2c_probe(struct i2c_client *i2c,
 #if defined(CONFIG_FSM_REGMAP)
 		fsm_regmap_i2c_deinit(fsm_dev->regmap);
 #endif
+		gpio_set_value(fsm_dev->rst_gpio, 0);
+		devm_gpio_free(&i2c->dev, fsm_dev->rst_gpio);
 		devm_kfree(&i2c->dev, fsm_dev);
 		return ret;
 	}
@@ -563,15 +586,24 @@ static int fsm_i2c_remove(struct i2c_client *i2c)
 
 static void fsm_i2c_shutdown(struct i2c_client *i2c)
 {
-	fsm_config_t *cfg = fsm_get_config();
+	fsm_dev_t *fsm_dev = i2c_get_clientdata(i2c);
 
-	pr_info("%s enter!\n", __func__);
-	if (cfg->speaker_on)
-		fsm_speaker_off();
+	pr_debug("enter");
+	if (fsm_dev == NULL) {
+		pr_err("bad parameter");
+		return;
+	}
+
+	fsm_stub_shut_down(fsm_dev);
+	if (gpio_is_valid(fsm_dev->rst_gpio))
+		gpio_set_value(fsm_dev->rst_gpio, 0);
+
+	dev_info(&i2c->dev, "i2c shutdowned");
 }
 
 static const struct i2c_device_id fsm_i2c_id[] = {
 	{ "fs16xx", 0 },
+	{ "fs1815", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, fsm_i2c_id);

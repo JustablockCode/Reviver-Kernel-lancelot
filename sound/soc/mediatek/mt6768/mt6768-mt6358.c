@@ -17,7 +17,7 @@
 #include "mt6768-afe-gpio.h"
 #include "../../codecs/mt6358.h"
 #include "../common/mtk-sp-spk-amp.h"
-#ifdef CONFIG_SND_SOC_FS16XX
+#ifdef CONFIG_SND_SOC_FS18XX
 #include "../fs1815n/fsm_public.h"
 #include "../fs1815n/fsm-dev.h"
 #endif
@@ -229,7 +229,7 @@ static int mt6768_mt6358_spk_amp_event(struct snd_soc_dapm_widget *w,
 #endif
 		}
 #endif
-#ifdef CONFIG_SND_SOC_FS16XX
+#ifdef CONFIG_SND_SOC_FS18XX
 		if (fsm_dev_count() > 0) {
 			pr_info("%s(), fsm audio spk:music\n", __func__);
 			fsm_speaker_onn(FSM_SCENE_MUSIC);
@@ -249,7 +249,7 @@ static int mt6768_mt6358_spk_amp_event(struct snd_soc_dapm_widget *w,
 #endif
 		}
 #endif
-#ifdef CONFIG_SND_SOC_FS16XX
+#ifdef CONFIG_SND_SOC_FS18XX
 		if (fsm_dev_count() > 0) {
 			pr_info("%s(), fsm_audio_off\n", __func__);
 			fsm_speaker_off();
@@ -290,7 +290,7 @@ static int mt6768_mt6358_rcv_amp_event(struct snd_soc_dapm_widget *w,
 			};
 		}
 #endif
-#ifdef CONFIG_SND_SOC_FS16XX
+#ifdef CONFIG_SND_SOC_FS18XX
 		if (fsm_dev_count() > 0) {
 			if (rcv_amp_mode) {
 				pr_err("%s(), fsm_audio rcv()\n", __func__);
@@ -311,7 +311,7 @@ static int mt6768_mt6358_rcv_amp_event(struct snd_soc_dapm_widget *w,
 				    (char *)aw87xxx_mode_function[AW87XXX_OFF_MODE]);
 			}
 #endif
-#ifdef CONFIG_SND_SOC_FS16XX
+#ifdef CONFIG_SND_SOC_FS18XX
 		if (fsm_dev_count() > 0) {
 			pr_info("%s(), fsm audio off()\n", __func__);
 			fsm_speaker_off();

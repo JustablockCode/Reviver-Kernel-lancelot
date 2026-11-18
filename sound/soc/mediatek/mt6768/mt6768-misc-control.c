@@ -23,8 +23,8 @@
 #define SGEN_MUTE_CH1_KCONTROL_NAME "Audio_SineGen_Mute_Ch1"
 #define SGEN_MUTE_CH2_KCONTROL_NAME "Audio_SineGen_Mute_Ch2"
 
-#ifdef CONFIG_SND_SOC_FS16XX
-extern int fsm_add_control(struct snd_soc_component *platform);
+#ifdef CONFIG_SND_SOC_FS18XX
+extern void fsm_add_codec_controls(struct snd_soc_component *cmpnt);
 #endif
 
 #if defined(CONFIG_SND_SOC_AW87XXX)
@@ -1263,8 +1263,8 @@ int mt6768_add_misc_control(struct snd_soc_component *platform)
 				      ARRAY_SIZE(mt6768_afe_bargein_controls));
 #endif
 
-#ifdef CONFIG_SND_SOC_FS16XX
-	fsm_add_control(platform);
+#ifdef CONFIG_SND_SOC_FS18XX
+	fsm_add_codec_controls(platform);
 #endif
 
 #if defined(CONFIG_SND_SOC_AW87XXX)

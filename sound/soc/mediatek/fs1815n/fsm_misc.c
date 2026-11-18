@@ -23,6 +23,7 @@
 struct fsm_misc {
 	struct fsm_dev *fsm_dev[FSM_DEV_MAX];
 	uint8_t addr;
+	uint8_t index;
 };
 
 static int g_misc_opened;
@@ -38,11 +39,15 @@ static int fsm_misc_check_params(unsigned int cmd, unsigned long arg)
 		return -ENOTTY;
 	}
 
+//#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
 	if (_IOC_DIR(cmd) & _IOC_READ) {
 		ret = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
 	} else if (_IOC_DIR(cmd) & _IOC_WRITE) {
 		ret = !access_ok(VERIFY_READ, (void __user *)arg, _IOC_SIZE(cmd));
 	}
+//#else
+//	ret = !access_ok((void __user *)arg, _IOC_SIZE(cmd));
+//#endif
 
 	return (ret ? -EFAULT : 0);
 }
@@ -99,9 +104,11 @@ static int fsm_misc_set_slave(struct fsm_misc *fsm_misc, uint8_t slave)
 		if (fsm_misc->fsm_dev[index] == NULL) {
 			pr_debug("not found device:%02X", slave);
 			fsm_misc->addr = 0;
+			fsm_misc->index = 0;
 			return -EINVAL;
 		}
 	}
+	fsm_misc->index = index;
 	fsm_misc->addr = slave;
 
 	return 0;
@@ -342,7 +349,7 @@ static ssize_t fsm_misc_read(struct file *filp, char __user *buf,
 	}
 	fsm_misc = filp->private_data;
 	do {
-		fsm_dev = fsm_misc->fsm_dev[fsm_misc->addr - FSM_ADDR_BASE];
+		fsm_dev = fsm_misc->fsm_dev[fsm_misc->index];
 		if (fsm_dev == NULL || fsm_dev->i2c == NULL) {
 			ret = -EINVAL;
 			break;
@@ -394,7 +401,7 @@ static ssize_t fsm_misc_write(struct file *filp, const char __user *buf,
 	}
 	fsm_misc = filp->private_data;
 	do {
-		fsm_dev = fsm_misc->fsm_dev[fsm_misc->addr - FSM_ADDR_BASE];
+		fsm_dev = fsm_misc->fsm_dev[fsm_misc->index];
 		if (fsm_dev == NULL || fsm_dev->i2c == NULL) {
 			ret = -EINVAL;
 			break;

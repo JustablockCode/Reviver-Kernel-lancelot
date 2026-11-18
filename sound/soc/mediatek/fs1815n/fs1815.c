@@ -146,9 +146,7 @@ int fs1815_shut_down(fsm_dev_t *fsm_dev)
 	if (fsm_dev == NULL) {
 		return -EINVAL;
 	}
-/* BSP.Audio - 2020.12.06 - modify to add kcontrol for closing AGC */
 	ret = fsm_reg_write(fsm_dev, REG(FS1815_PWRCTRL), 0x0001);
-/* end modify*/
 	ret |= fsm_reg_write(fsm_dev, REG(FS1815_SYSCTRL), 0x0000);
 	fsm_delay_ms(10);
 

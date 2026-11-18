@@ -28,9 +28,9 @@
 #define CONFIG_FSM_FS1815
 
 /* VERSION INFORMATION */
-#define FSM_CODE_VERSION "v4.0.2"
-#define FSM_CODE_DATE    "20201109"
-#define FSM_GIT_BRANCH   "fsm_fs1815"
+#define FSM_CODE_VERSION "v4.0.8-a"
+#define FSM_CODE_DATE    "20221220"
+#define FSM_GIT_BRANCH   "spc-driver-v1"
 #define FSM_GIT_COMMIT   "23749327"
 
 #define FSM_DRV_NAME     "fs16xx"
