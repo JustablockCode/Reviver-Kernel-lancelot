@@ -1,5 +1,5 @@
-#ifndef __AW_BIN_PARSE_H__
-#define __AW_BIN_PARSE_H__
+#ifndef __AW87XXX_BIN_PARSE_H__
+#define __AW87XXX_BIN_PARSE_H__
 
 #define NULL    ((void *)0)
 #define GET_32_DATA(w, x, y, z) ((unsigned int)(((w) << 24) | ((x) << 16) | ((y) << 8) | (z)))
@@ -21,6 +21,7 @@ enum data_type_enum {
 	DATA_TYPE_SOC_REG = 0x00000020,
 	DATA_TYPE_SOC_APP = 0x00000021,
 	DATA_TYPE_MULTI_BINS = 0x00002000,
+	DATA_TYPE_MONITOR_ANALOG = 0x00020000,
 };
 
 enum data_version_enum {
@@ -60,7 +61,7 @@ struct bin_container {
 };
 
 struct aw_bin {
-	char *p_addr; /* Offset pointer (backward offset pointer to obtain frame header information and important information) */
+	unsigned char *p_addr; /* Offset pointer (backward offset pointer to obtain frame header information and important information) */
 	unsigned int all_bin_parse_num; /* The number of all bin files */
 	unsigned int multi_bin_parse_num; /* The number of single bin files */
 	unsigned int single_bin_parse_num; /* The number of multiple bin files */
@@ -68,6 +69,5 @@ struct aw_bin {
 	struct bin_container info; /* Obtained bin file data that needs to be parsed */
 };
 
-extern int aw_parsing_bin_file(struct aw_bin *bin);
-int aw_parse_bin_header_1_0_0(struct aw_bin *bin);
+extern int aw87xxx_parsing_bin_file(struct aw_bin *bin);
 #endif

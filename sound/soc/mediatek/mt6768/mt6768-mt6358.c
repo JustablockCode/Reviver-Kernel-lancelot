@@ -22,6 +22,10 @@
 #include "../fs1815n/fsm-dev.h"
 #endif
 
+#ifdef CONFIG_SND_SOC_AW87XXX
+#include "../aw87xxx/aw87xxx.h"
+#endif
+
 /*
  * if need additional control for the ext spk amp that is connected
  * after Lineout Buffer / HP Buffer on the codec, put the control in
@@ -32,11 +36,6 @@
 #define EXT_RCV_AMP_W_NAME "Ext_Reciver_Amp"    // ALPS05007528
 #endif
 
-#ifdef CONFIG_TARGET_PRODUCT_SELENE
-static const char *awinic = "awinic";
-static const char *foursemi = "foursemi";
-extern char *get_audio_pa_vendor(void);
-#endif
 
 static const char *const mt6768_spk_type_str[] = {MTK_SPK_NOT_SMARTPA_STR,
 						  MTK_SPK_RICHTEK_RT5509_STR,
@@ -51,13 +50,10 @@ static const struct soc_enum mt6768_spk_type_enum[] = {
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(mt6768_spk_type_str),
 			    mt6768_spk_type_str),
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(mt6768_spk_i2s_type_str),
-			    mt6768_spk_i2s_type_str),
+						      mt6768_spk_i2s_type_str),
 };
 
-#if defined(CONFIG_SND_SOC_AW87559)
-static const char *const mode_function[] = { "Off", "Music", "Voice", "Fm", "Rcv" };
-static SOC_ENUM_SINGLE_EXT_DECL(aw87xxx_mode, mode_function);
-
+#if defined(CONFIG_SND_SOC_AW87XXX)
 enum aw87xxx_scene_mode {
 	AW87XXX_OFF_MODE = 0,
 	AW87XXX_MUSIC_MODE = 1,
@@ -66,68 +62,92 @@ enum aw87xxx_scene_mode {
 	AW87XXX_RCV_MODE = 4,
 	AW87XXX_MODE_MAX = 5,
 };
-enum {
+
+enum aw87xxx_channel {
 	AW87XXX_LEFT_CHANNEL = 0,
 	AW87XXX_RIGHT_CHANNEL = 1,
 };
 
-extern unsigned char aw87xxx_show_current_mode(int32_t channel);
-extern int aw87xxx_audio_scene_load(uint8_t mode, int32_t channel);
+static const char *const aw87xxx_mode_function[] = {
+	"Off", "Music", "Voice", "Fm", "Receiver"
+};
 
-static int aw87559_mode_get(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol)
-{
-	unsigned char current_mode;
-	current_mode = aw87xxx_show_current_mode(AW87XXX_LEFT_CHANNEL);
-	ucontrol->value.integer.value[0] = current_mode;
-	pr_info("%s: get mode:%d\n", __func__, current_mode);
-	return 0;
-}
+static SOC_ENUM_SINGLE_EXT_DECL(aw87xxx_mode, aw87xxx_mode_function);
 
-static int aw87559_mode_set(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol)
+extern char *aw87xxx_show_current_profile(int dev_index);
+extern int aw87xxx_set_profile(int dev_index, char *profile);
+
+static int aw87xxx_mode_get(struct snd_kcontrol *kcontrol,
+			    struct snd_ctl_elem_value *ucontrol,
+			    int channel)
 {
-	int ret = 0;
-	unsigned char set_mode;
-	set_mode = ucontrol->value.integer.value[0];
-	ret = aw87xxx_audio_scene_load(set_mode, AW87XXX_LEFT_CHANNEL);
-	if (ret < 0) {
-		pr_err("%s: mode:%d set failed\n", __func__, set_mode);
-		return -EPERM;
+	char *profile = aw87xxx_show_current_profile(channel);
+	int i;
+
+	if (!profile) {
+		ucontrol->value.integer.value[0] = AW87XXX_OFF_MODE;
+		return 0;
 	}
-	pr_info("%s: set mode:%d success", __func__, set_mode);
-	return 0;
-}
 
-static int aw87389_mode_get(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol)
-{
-	unsigned char current_mode;
-	current_mode = aw87xxx_show_current_mode(AW87XXX_RIGHT_CHANNEL);
-	ucontrol->value.integer.value[0] = current_mode;
-	pr_info("%s: get mode:%d\n", __func__, current_mode);
-	return 0;
-}
-
-static int aw87389_mode_set(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol)
-{
-	int ret = 0;
-	unsigned char set_mode;
-	set_mode = ucontrol->value.integer.value[0];
-	ret = aw87xxx_audio_scene_load(set_mode, AW87XXX_RIGHT_CHANNEL);
-	if (ret < 0) {
-		pr_err("%s: mode:%d set failed\n", __func__, set_mode);
-		return -EPERM;
+	for (i = 0; i < ARRAY_SIZE(aw87xxx_mode_function); i++) {
+		if (!strcasecmp(profile, aw87xxx_mode_function[i])) {
+			ucontrol->value.integer.value[0] = i;
+			return 0;
+		}
 	}
-	pr_info("%s: set mode:%d success", __func__, set_mode);
+
+	ucontrol->value.integer.value[0] = AW87XXX_OFF_MODE;
 	return 0;
 }
+
+static int aw87xxx_mode_set(struct snd_kcontrol *kcontrol,
+			    struct snd_ctl_elem_value *ucontrol,
+			    int channel)
+{
+	int mode = ucontrol->value.integer.value[0];
+	int ret;
+
+	if (mode < 0 || mode >= ARRAY_SIZE(aw87xxx_mode_function))
+		return -EINVAL;
+
+	ret = aw87xxx_set_profile(channel, (char *)aw87xxx_mode_function[mode]);
+	if (ret < 0 && ret != -ENODEV) {
+		pr_err("%s: mode:%d set failed for channel %d, ret=%d\n",
+		       __func__, mode, channel, ret);
+		return ret;
+	}
+	return 0;
+}
+
+static int aw87xxx_spk_mode_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	return aw87xxx_mode_get(kcontrol, ucontrol, AW87XXX_LEFT_CHANNEL);
+}
+
+static int aw87xxx_spk_mode_set(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	return aw87xxx_mode_set(kcontrol, ucontrol, AW87XXX_LEFT_CHANNEL);
+}
+
+#ifdef CONFIG_SND_SOC_DSPK_LOL_HP
+static int aw87xxx_rcv_mode_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	return aw87xxx_mode_get(kcontrol, ucontrol, AW87XXX_RIGHT_CHANNEL);
+}
+
+static int aw87xxx_rcv_mode_set(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	return aw87xxx_mode_set(kcontrol, ucontrol, AW87XXX_RIGHT_CHANNEL);
+}
+#endif
 #endif
 
 // ALPS05007528 begin
-#if defined(CONFIG_TARGET_PRODUCT_SELENE) && \
-	defined(CONFIG_SND_SOC_DSPK_LOL_HP)
+#if defined(CONFIG_SND_SOC_DSPK_LOL_HP)
 static int rcv_amp_mode;
 static const char *rcv_amp_type_str[] = {"SPEAKER_MODE", "RECIEVER_MODE"};
 static const struct soc_enum rcv_amp_type_enum =
@@ -186,13 +206,6 @@ static int mt6768_spk_i2s_in_type_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-#ifdef CONFIG_SND_SOC_AW87519
-extern unsigned char aw87519_audio_kspk(void);
-extern unsigned char aw87519_audio_drcv(void);
-extern unsigned char aw87519_audio_hvload(void);
-extern unsigned char aw87519_audio_off(void);
-#endif
-
 static int mt6768_mt6358_spk_amp_event(struct snd_soc_dapm_widget *w,
 				       struct snd_kcontrol *kcontrol,
 				       int event)
@@ -205,41 +218,41 @@ static int mt6768_mt6358_spk_amp_event(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 		/* spk amp on control */
-#ifdef CONFIG_SND_SOC_AW87519
-		aw87519_audio_kspk();
-#elif defined(CONFIG_TARGET_PRODUCT_SELENE)
-		if (strcmp((const char *)get_audio_pa_vendor(), awinic) == 0) {
-#ifdef CONFIG_SND_SOC_AW87559
+#ifdef CONFIG_SND_SOC_AW87XXX
+		if (aw87xxx_dev_count() > 0) {
 			pr_info("%s(), aw87559_audio_kspk()\n", __func__);
-			aw87xxx_audio_scene_load(AW87XXX_MUSIC_MODE, AW87XXX_LEFT_CHANNEL);
+			aw87xxx_set_profile(AW87XXX_LEFT_CHANNEL,
+				    (char *)aw87xxx_mode_function[AW87XXX_MUSIC_MODE]);
+#if defined(CONFIG_SND_SOC_DSPK_LOL_HP)
+			aw87xxx_set_profile(AW87XXX_RIGHT_CHANNEL,
+				    (char *)aw87xxx_mode_function[AW87XXX_MUSIC_MODE]);
 #endif
-		} else if (strcmp((const char *)get_audio_pa_vendor(), foursemi) == 0) {
+		}
+#endif
 #ifdef CONFIG_SND_SOC_FS16XX
+		if (fsm_dev_count() > 0) {
 			pr_info("%s(), fsm audio spk:music\n", __func__);
 			fsm_speaker_onn(FSM_SCENE_MUSIC);
-#endif
-		} else {
-			pr_err("Please check out start PA");
 		}
 #endif
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
 		/* spk amp off control */
-#ifdef CONFIG_SND_SOC_AW87519
-		aw87519_audio_off();
-#elif defined(CONFIG_TARGET_PRODUCT_SELENE)
-		if (strcmp((const char *)get_audio_pa_vendor(), awinic) == 0) {
-#ifdef CONFIG_SND_SOC_AW87559
+#ifdef CONFIG_SND_SOC_AW87XXX
+		if (aw87xxx_dev_count() > 0) {
 			pr_info("%s(), aw87559_audio_off()\n", __func__);
-			aw87xxx_audio_scene_load(AW87XXX_OFF_MODE, AW87XXX_LEFT_CHANNEL);
+			aw87xxx_set_profile(AW87XXX_LEFT_CHANNEL,
+				    (char *)aw87xxx_mode_function[AW87XXX_OFF_MODE]);
+#if defined(CONFIG_SND_SOC_DSPK_LOL_HP)
+			aw87xxx_set_profile(AW87XXX_RIGHT_CHANNEL,
+				    (char *)aw87xxx_mode_function[AW87XXX_OFF_MODE]);
 #endif
-		} else if (strcmp((const char *)get_audio_pa_vendor(), foursemi) == 0) {
+		}
+#endif
 #ifdef CONFIG_SND_SOC_FS16XX
+		if (fsm_dev_count() > 0) {
 			pr_info("%s(), fsm_audio_off\n", __func__);
 			fsm_speaker_off();
-#endif
-		} else {
-			pr_err("Please check out off PA");
 		}
 #endif
 		break;
@@ -251,8 +264,7 @@ static int mt6768_mt6358_spk_amp_event(struct snd_soc_dapm_widget *w,
 };
 
 // ALPS05007528 begin
-#if defined(CONFIG_TARGET_PRODUCT_SELENE) && \
-	defined(CONFIG_SND_SOC_DSPK_LOL_HP)
+#if defined(CONFIG_SND_SOC_DSPK_LOL_HP)
 static int mt6768_mt6358_rcv_amp_event(struct snd_soc_dapm_widget *w,
 				       struct snd_kcontrol *kcontrol,
 				       int event)
@@ -265,18 +277,21 @@ static int mt6768_mt6358_rcv_amp_event(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 		/* spk amp on control */
-		if (strcmp((const char *)get_audio_pa_vendor(), awinic) == 0) {
-#ifdef CONFIG_SND_SOC_AW87559
+#ifdef CONFIG_SND_SOC_AW87XXX
+		if (aw87xxx_dev_count() > 0) {
 			if (rcv_amp_mode) {
 				pr_info("%s(), aw87xxx_audio_rcv \n", __func__);
-				aw87xxx_audio_scene_load(AW87XXX_RCV_MODE, AW87XXX_RIGHT_CHANNEL);
+			aw87xxx_set_profile(AW87XXX_RIGHT_CHANNEL,
+					    (char *)aw87xxx_mode_function[AW87XXX_RCV_MODE]);
 			} else {
 				pr_info("%s(), aw87xxx_audio_spk \n", __func__);
-				aw87xxx_audio_scene_load(AW87XXX_MUSIC_MODE, AW87XXX_RIGHT_CHANNEL);
+			aw87xxx_set_profile(AW87XXX_RIGHT_CHANNEL,
+					    (char *)aw87xxx_mode_function[AW87XXX_MUSIC_MODE]);
 			};
+		}
 #endif
-		} else if (strcmp((const char *)get_audio_pa_vendor(), foursemi) == 0) {
 #ifdef CONFIG_SND_SOC_FS16XX
+		if (fsm_dev_count() > 0) {
 			if (rcv_amp_mode) {
 				pr_err("%s(), fsm_audio rcv()\n", __func__);
 				fsm_speaker_onn(FSM_SCENE_RCV);
@@ -284,26 +299,24 @@ static int mt6768_mt6358_rcv_amp_event(struct snd_soc_dapm_widget *w,
 				pr_err("%s(), fsm_audio spk:music\n", __func__);
 				fsm_speaker_onn(FSM_SCENE_MUSIC);
 			};
-#endif
-		} else {
-			pr_err("Please check out off PA");
 		}
+#endif
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
 		/* spk amp off control */
-		if (strcmp((const char *)get_audio_pa_vendor(), awinic) == 0) {
-#ifdef CONFIG_SND_SOC_AW87559
+#ifdef CONFIG_SND_SOC_AW87XXX
+		if (aw87xxx_dev_count() > 0) {
 			pr_info("%s(), aw87xxx_audio_off \n", __func__);
-			aw87xxx_audio_scene_load(AW87XXX_OFF_MODE, AW87XXX_RIGHT_CHANNEL);
+			aw87xxx_set_profile(AW87XXX_RIGHT_CHANNEL,
+				    (char *)aw87xxx_mode_function[AW87XXX_OFF_MODE]);
+			}
 #endif
-		} else if (strcmp((const char *)get_audio_pa_vendor(), foursemi) == 0) {
 #ifdef CONFIG_SND_SOC_FS16XX
+		if (fsm_dev_count() > 0) {
 			pr_info("%s(), fsm audio off()\n", __func__);
 			fsm_speaker_off();
-#endif
-		} else {
-			pr_err("Please check out off PA");
 		}
+#endif
 		break;
 	default:
 		break;
@@ -312,25 +325,23 @@ static int mt6768_mt6358_rcv_amp_event(struct snd_soc_dapm_widget *w,
 	return 0;
 };
 #endif
+// ALPS05007528 end
 
 static const struct snd_soc_dapm_widget mt6768_mt6358_widgets[] = {
 	SND_SOC_DAPM_SPK(EXT_SPK_AMP_W_NAME, mt6768_mt6358_spk_amp_event),
-#if defined(CONFIG_TARGET_PRODUCT_SELENE) && \
-	defined(CONFIG_SND_SOC_DSPK_LOL_HP)
+#if defined(CONFIG_SND_SOC_DSPK_LOL_HP)
 	SND_SOC_DAPM_SPK(EXT_RCV_AMP_W_NAME, mt6768_mt6358_rcv_amp_event), // ALPS05007528
 #endif
 };
 
 static const struct snd_soc_dapm_route mt6768_mt6358_routes[] = {
 	{EXT_SPK_AMP_W_NAME, NULL, "LINEOUT L"},
-#if defined(CONFIG_TARGET_PRODUCT_SELENE) && \
-	defined(CONFIG_SND_SOC_DSPK_LOL_HP)
+#if defined(CONFIG_SND_SOC_DSPK_LOL_HP)
 	{EXT_RCV_AMP_W_NAME, NULL, "Receiver"}, // ALPS05007528
 #endif
 	{EXT_SPK_AMP_W_NAME, NULL, "LINEOUT L HSSPK"},
 	{EXT_SPK_AMP_W_NAME, NULL, "Headphone L Ext Spk Amp"},
-#if defined(CONFIG_TARGET_PRODUCT_SELENE) && \
-	defined(CONFIG_SND_SOC_DSPK_LOL_HP)
+#if defined(CONFIG_SND_SOC_DSPK_LOL_HP)
 	{EXT_RCV_AMP_W_NAME, NULL, "Headphone R Ext Spk Amp"}, // ALPS05007528
 #else
 	{EXT_SPK_AMP_W_NAME, NULL, "Headphone R Ext Spk Amp"},
@@ -339,8 +350,7 @@ static const struct snd_soc_dapm_route mt6768_mt6358_routes[] = {
 
 static const struct snd_kcontrol_new mt6768_mt6358_controls[] = {
 	SOC_DAPM_PIN_SWITCH(EXT_SPK_AMP_W_NAME),
-#if defined(CONFIG_TARGET_PRODUCT_SELENE) && \
-	defined(CONFIG_SND_SOC_DSPK_LOL_HP)
+#if defined(CONFIG_SND_SOC_DSPK_LOL_HP)
 	SOC_DAPM_PIN_SWITCH(EXT_RCV_AMP_W_NAME),
 	SOC_ENUM_EXT("RCV_AMP_MODE", rcv_amp_type_enum,
 		     mt6768_rcv_amp_mode_get, mt6768_rcv_amp_mode_set), // ALPS05007528
@@ -352,14 +362,13 @@ static const struct snd_kcontrol_new mt6768_mt6358_controls[] = {
 	SOC_ENUM_EXT("MTK_SPK_I2S_IN_TYPE_GET", mt6768_spk_type_enum[1],
 		     mt6768_spk_i2s_in_type_get, NULL),
 
-#if defined(CONFIG_SND_SOC_AW87559)
-#if defined(CONFIG_TARGET_PRODUCT_SELENE) && \
-	defined(CONFIG_SND_SOC_DSPK_LOL_HP)
-	SOC_ENUM_EXT("aw87xxx_rcv_switch",aw87xxx_mode ,
-			aw87389_mode_get, aw87389_mode_set),
+#if defined(CONFIG_SND_SOC_AW87XXX)
+#if defined(CONFIG_SND_SOC_DSPK_LOL_HP)
+	SOC_ENUM_EXT("aw87xxx_rcv_switch", aw87xxx_mode,
+			aw87xxx_rcv_mode_get, aw87xxx_rcv_mode_set),
 #endif
-	SOC_ENUM_EXT("aw87xxx_spk_switch",aw87xxx_mode ,
-			aw87559_mode_get, aw87559_mode_set),
+	SOC_ENUM_EXT("aw87xxx_spk_switch", aw87xxx_mode,
+			aw87xxx_spk_mode_get, aw87xxx_spk_mode_set),
 #endif
 };
 

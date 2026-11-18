@@ -27,6 +27,10 @@
 extern int fsm_add_control(struct snd_soc_component *platform);
 #endif
 
+#if defined(CONFIG_SND_SOC_AW87XXX)
+extern int aw87xxx_add_codec_controls(void *codec);
+#endif
+
 static const char * const mt6768_sgen_mode_str[] = {
 	"I0I1",   "I2",     "I3I4",   "I5I6",
 	"I7I8",   "I9",     "I10I11", "I12I13",
@@ -1263,5 +1267,12 @@ int mt6768_add_misc_control(struct snd_soc_component *platform)
 	fsm_add_control(platform);
 #endif
 
+#if defined(CONFIG_SND_SOC_AW87XXX)
+		{
+		int aw_ret = aw87xxx_add_codec_controls(platform);
+		if (aw_ret < 0)
+			dev_err(platform->dev, "aw87xxx_add_codec_controls failed, ret=%d\n", aw_ret);
+		}
+#endif
 	return 0;
 }

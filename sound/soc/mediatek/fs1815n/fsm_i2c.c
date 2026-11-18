@@ -454,7 +454,6 @@ static int fsm_i2c_probe(struct i2c_client *i2c,
 	fsm_config_t *cfg = fsm_get_config();
 	fsm_dev_t *fsm_dev;
 	int ret;
-	char *foursemi = "foursemi";
 
 	pr_debug("enter");
 	if (!i2c_check_functionality(i2c->adapter, I2C_FUNC_I2C)) {
@@ -516,7 +515,9 @@ static int fsm_i2c_probe(struct i2c_client *i2c,
 		fsm_codec_register(&i2c->dev, fsm_dev->id);
 	}
 
-	hq_regiser_hw_info(HWID_AUDIO, foursemi);
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	hq_regiser_hw_info(HWID_AUDIO, "foursemi");
+#endif
 	dev_info(&i2c->dev, "i2c probe completed");
 
 	return 0;
