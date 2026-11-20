@@ -1,0 +1,17 @@
+{
+  "base_revision": "d1b030cbcf95c2b98733f1c32cc50a1438e402ba",
+  "repository": "https://gitlab.com/kalilinux/nethunter/build-scripts/kali-nethunter-kernel-builder.git",
+  "revision": "e49544f3dea44724f354aa6fce76a59e781b18e7",
+  "patches": {
+    "patches/4.19/0001-prima-fix-netdev-notifier-crash.patch": "c332fe685730f4bdd564256c7d3c53c9e2acf3ac4484019cd2e05a33cdea9049",
+    "patches/4.19/add-rtl88xxau-5.6.4.2-drivers.patch": "13de1c6468d181c4944d9676b9e9d095715ea32036ca2a2e0913e44cfb0946ec",
+    "patches/4.19/add-rtw88-drivers-4.19.patch": "f299d527f8dc8e0b995ee279ed21337e381bff43bd7e00942ac961c66fa89e67",
+    "patches/4.19/add-ub500-to-btusb.patch": "8001850263864993182e590ffda788663015953c95077581a646fbc7a327251d",
+    "patches/4.19/add-wifi-injection-4.14.patch": "97455546634a128b70cfb9742b741c131bf261839b26c9643bd7f8edf3494eac",
+    "patches/4.19/add-wifi-injection-4.19.patch": "f794aa68f1e4ee4540ac7062e220033442a325994c68e8e56618b4a790d42c5c",
+    "patches/4.19/fix-ath9k-naming-conflict.patch": "0ad33d300550e1d04801390f394302f062aaccb847e0e9cfa765e2d92e6f33ec",
+    "patches/4.19/fix-yylloc.dtc-lexer.lex.c_shipped.patch": "fbc8c45c0903ffa885ba41df50c2d35993fdfcced0561946959764e2096c1b2f"
+  },
+  "root_source_lock": "KernelSU/REVIVER-source-lock.json",
+  "scope": "USB rtw88 backport and gated injection; see README.md for omitted/inapplicable portions"
+}

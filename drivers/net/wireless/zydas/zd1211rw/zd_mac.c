@@ -242,14 +242,25 @@ void zd_mac_clear(struct zd_mac *mac)
 static int set_rx_filter(struct zd_mac *mac)
 {
 	unsigned long flags;
-	u32 filter = STA_RX_FILTER;
+	struct zd_ioreq32 ioreqs[] = {
+		{ CR_RX_FILTER, STA_RX_FILTER },
+		{ CR_SNIFFER_ON, 0U },
+	};
 
 	spin_lock_irqsave(&mac->lock, flags);
-	if (mac->pass_ctrl)
-		filter |= RX_FILTER_CTRL;
+	if (mac->pass_ctrl) {
+		if (IS_ENABLED(CONFIG_NETHUNTER)) {
+			ioreqs[0].value = ~0U;
+			ioreqs[1].value = 1;
+		} else {
+			ioreqs[0].value |= RX_FILTER_CTRL;
+		}
+	}
 	spin_unlock_irqrestore(&mac->lock, flags);
 
-	return zd_iowrite32(&mac->chip, CR_RX_FILTER, filter);
+	if (!IS_ENABLED(CONFIG_NETHUNTER))
+		return zd_iowrite32(&mac->chip, CR_RX_FILTER, ioreqs[0].value);
+	return zd_iowrite32a(&mac->chip, ioreqs, ARRAY_SIZE(ioreqs));
 }
 
 static int set_mac_and_bssid(struct zd_mac *mac)
@@ -1060,7 +1071,9 @@ int zd_mac_rx(struct ieee80211_hw *hw, const u8 *buffer, unsigned int length)
 	/* Caller has to ensure that length >= sizeof(struct rx_status). */
 	status = (struct rx_status *)
 		(buffer + (length - sizeof(struct rx_status)));
-	if (status->frame_status & ZD_RX_ERROR) {
+	if ((status->frame_status & ZD_RX_ERROR) ||
+	    (IS_ENABLED(CONFIG_NETHUNTER) &&
+	     (status->frame_status & ~0x21))) {
 		if (mac->pass_failed_fcs &&
 				(status->frame_status & ZD_RX_CRC32_ERROR)) {
 			stats.flag |= RX_FLAG_FAILED_FCS_CRC;
@@ -1403,7 +1416,10 @@ struct ieee80211_hw *zd_mac_alloc_hw(struct usb_interface *intf)
 	ieee80211_hw_set(hw, MFP_CAPABLE);
 	ieee80211_hw_set(hw, HOST_BROADCAST_PS_BUFFERING);
 	ieee80211_hw_set(hw, RX_INCLUDES_FCS);
-	ieee80211_hw_set(hw, SIGNAL_UNSPEC);
+	if (IS_ENABLED(CONFIG_NETHUNTER))
+		ieee80211_hw_set(hw, SIGNAL_DBM);
+	else
+		ieee80211_hw_set(hw, SIGNAL_UNSPEC);
 
 	hw->wiphy->interface_modes =
 		BIT(NL80211_IFTYPE_MESH_POINT) |

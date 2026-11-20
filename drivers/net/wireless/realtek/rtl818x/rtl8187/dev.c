@@ -251,7 +251,12 @@ static void rtl8187_tx(struct ieee80211_hw *dev,
 	flags |= RTL818X_TX_DESC_FLAG_NO_ENC;
 
 	flags |= ieee80211_get_tx_rate(dev, info)->hw_value << 24;
-	if (ieee80211_has_morefrags(tx_hdr->frame_control))
+
+	/* Monitor injection must not wait for fragment acknowledgements. */
+	if (ieee80211_has_morefrags(tx_hdr->frame_control) &&
+	    (!IS_ENABLED(CONFIG_NETHUNTER) ||
+	     (info->control.vif &&
+	      info->control.vif->type != NL80211_IFTYPE_MONITOR)))
 		flags |= RTL818X_TX_DESC_FLAG_MOREFRAG;
 
 	/* HW will perform RTS-CTS when only RTS flags is set.

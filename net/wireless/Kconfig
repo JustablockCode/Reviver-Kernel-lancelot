@@ -201,6 +201,19 @@ config CFG80211_WEXT_EXPORT
 
 endif # CFG80211
 
+config NETHUNTER
+	bool "Kali NetHunter monitor and injection extensions"
+	depends on CFG80211
+	default n
+	help
+	  Enable the Kali NetHunter monitor-channel and packet-injection
+	  adaptations. These can disrupt concurrent managed connections on
+	  the same radio. Intended for the dedicated NetHunter build.
+	  The USB adapter drivers still require matching firmware and OTG
+	  power. Internal vendor WLAN drivers are not converted to mac80211.
+
+	  If unsure, say N.
+
 config LIB80211
 	tristate
 	default n
