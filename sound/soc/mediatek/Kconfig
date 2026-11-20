@@ -427,8 +427,6 @@ config SND_SOC_MTK_AUDIO_DSP
 source "sound/soc/mediatek/aw87xxx/Kconfig"
 source "sound/soc/mediatek/fs1815n/Kconfig"
 
-source "sound/soc/mediatek/aw87559/Kconfig"
-
 config MTK_ULTRASND_PROXIMITY
 	bool "MTK ultra sound proximity support"
 	select MTK_AUDIO_IPI

@@ -1558,7 +1558,6 @@ void aw87xxx_acf_init(struct aw_device *aw_dev, struct acf_bin_info *acf_info, i
 }
 
 /* Legacy binary loader by vrdons start */
-#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
 static const uint8_t aw87519_music_default[] = {
 	0x69, 0x80, 0x69, 0xB7, 0x01, 0xF0, 0x02, 0x09,
 	0x03, 0xE8, 0x04, 0x11, 0x05, 0x10, 0x06, 0x43,
@@ -1645,7 +1644,6 @@ int aw87xxx_legacy_aw87519_load(struct device *dev,
 
 	return 0;
 }
-#endif
 
 int aw87xxx_legacy_bin_load(struct device *dev, struct acf_bin_info *acf_info)
 {
@@ -1691,7 +1689,6 @@ int aw87xxx_legacy_bin_load(struct device *dev, struct acf_bin_info *acf_info)
 			ret = request_firmware_direct(&fw, fw_name, dev);
 		}
 		if (ret < 0 && acf_info->aw_dev->chipid == 0x59) { /* aw87519 */
-#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
 			if (!strcmp(scenes[i], "music"))
 				snprintf(fw_name, sizeof(fw_name), "aw87519_kspk.bin");
 			else if (!strcmp(scenes[i], "rcv"))
@@ -1701,7 +1698,6 @@ int aw87xxx_legacy_bin_load(struct device *dev, struct acf_bin_info *acf_info)
 
 			if (fw_name[0])
 				ret = request_firmware_direct(&fw, fw_name, dev);
-#endif
 		}
 
 		if (ret == 0 && fw) {

@@ -7,13 +7,17 @@
 #define _MTK_BATTERY_PROPERTY_H
 
 /* customize */
-#define DIFFERENCE_FULLOCV_ITH	200	/* mA */
+#define DIFFERENCE_FULLOCV_ITH	250	/* mA */
 #define MTK_CHR_EXIST 1
 #define KEEP_100_PERCENT 1
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 #define R_FG_VALUE	10				/* mOhm */
-#define EMBEDDED_SEL 0
+#else
+#define R_FG_VALUE	5				/* mOhm */
+#endif
+#define EMBEDDED_SEL 1
 #define PMIC_SHUTDOWN_CURRENT 20	/* 0.01 mA */
-#define FG_METER_RESISTANCE	100
+#define FG_METER_RESISTANCE	75
 #define CAR_TUNE_VALUE	99 /*1.00 */
 #define NO_BAT_TEMP_COMPENSATE 0
 /* NO_BAT_TEMP_COMPENSATE 1 = don't need bat_temper compensate, */
@@ -30,7 +34,12 @@
 #define SHUTDOWN_GAUGE1_VBAT_EN 0
 #define SHUTDOWN_GAUGE1_VBAT 34000
 
+
+#ifndef CONFIG_TARGET_PRODUCT_SELENE
 #define SHUTDOWN_GAUGE0_VOLTAGE 34000
+#else
+#define SHUTDOWN_GAUGE0_VOLTAGE 33500
+#endif
 
 #define POWERON_SYSTEM_IBOOT 500	/* mA */
 

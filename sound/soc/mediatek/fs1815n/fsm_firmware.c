@@ -8,7 +8,7 @@
 #include <linux/firmware.h>
 #include <linux/slab.h>
 
-static int g_fsm_fw_init;
+static int g_fsm_fw_init = 0;
 
 #ifdef FSM_UNUSED_CODE
 static void *fsm_devm_kzalloc(struct device *dev, void *buf, size_t size)

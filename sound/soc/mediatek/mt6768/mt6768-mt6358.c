@@ -17,9 +17,9 @@
 #include "mt6768-afe-gpio.h"
 #include "../../codecs/mt6358.h"
 #include "../common/mtk-sp-spk-amp.h"
-#ifdef CONFIG_SND_SOC_FS16XX
-#include "../FS1615n/fsm_public.h"
-#include "../FS1615n/fsm-dev.h"
+#ifdef CONFIG_SND_SOC_FS18XX
+#include "../fs1815n/fsm_public.h"
+#include "../fs1815n/fsm-dev.h"
 #endif
 
 /*
@@ -254,36 +254,36 @@ static int mt6768_mt6358_spk_amp_event(struct snd_soc_dapm_widget *w,
 #if defined(CONFIG_SND_SOC_DSPK_LOL_HP)
 		if (1 == spk_amp_mode) {
 			dev_info(card->dev, "%s(), spk_amp_audio_krcv(), mode = %d\n", __func__, spk_amp_mode);
-			#if defined(CONFIG_SND_SOC_FS16XX)
+			#if defined(CONFIG_SND_SOC_FS18XX)
 			fsm_set_scene(15);
-			fsm_speaker_onn();
+			fsm_speaker_onn(BIT(15));
 			#endif
 			#if defined(CONFIG_SND_SOC_AW87XXX)
 			aw87xxx_set_profile(AW87XXX_DSPK_SPK_CHANNEL, (char *)aw87xxx_mode_function[spk_amp_mode]);
 			#endif
 		} else if (2 == spk_amp_mode) {
 			dev_info(card->dev, "%s(), spk_amp_audio_kfm() mode = %d\n", __func__, spk_amp_mode);
-			#if defined(CONFIG_SND_SOC_FS16XX)
+			#if defined(CONFIG_SND_SOC_FS18XX)
 			fsm_set_scene(0);
-			fsm_speaker_onn();
+			fsm_speaker_onn(BIT(0));
 			#endif
 			#if defined(CONFIG_SND_SOC_AW87XXX)
 			aw87xxx_set_profile(AW87XXX_DSPK_SPK_CHANNEL, (char *)aw87xxx_mode_function[spk_amp_mode]);
 			#endif
 		} else if (3 == spk_amp_mode) {
 			dev_info(card->dev, "%s(), spk_amp_audio_kvoice() mode = %d\n", __func__, spk_amp_mode);
-			#if defined(CONFIG_SND_SOC_FS16XX)
+			#if defined(CONFIG_SND_SOC_FS18XX)
 			fsm_set_scene(1);
-			fsm_speaker_onn();
+			fsm_speaker_onn(BIT(1));
 			#endif
 			#if defined(CONFIG_SND_SOC_AW87XXX)
 			aw87xxx_set_profile(AW87XXX_DSPK_SPK_CHANNEL, (char *)aw87xxx_mode_function[spk_amp_mode]);
 			#endif
 		} else {
 			dev_info(card->dev, "%s(), spk_amp_audio_kspk() mode = %d\n", __func__, spk_amp_mode);
-			#if defined(CONFIG_SND_SOC_FS16XX)
+			#if defined(CONFIG_SND_SOC_FS18XX)
 			fsm_set_scene(0);
-			fsm_speaker_onn();
+			fsm_speaker_onn(BIT(0));
 			#endif
 			#if defined(CONFIG_SND_SOC_AW87XXX)
 			aw87xxx_set_profile(AW87XXX_DSPK_SPK_CHANNEL, (char *)aw87xxx_mode_function[AW87XXX_MUSIC_MODE]);
@@ -294,9 +294,9 @@ static int mt6768_mt6358_spk_amp_event(struct snd_soc_dapm_widget *w,
 #if defined(CONFIG_SND_SOC_AW87XXX)
 		aw87xxx_set_profile(AW87XXX_LEFT_CHANNEL, (char *)aw87xxx_mode_function[AW87XXX_MUSIC_MODE]);
 #endif
-#ifdef CONFIG_SND_SOC_FS16XX
+#ifdef CONFIG_SND_SOC_FS18XX
 		fsm_set_scene(0);
-		fsm_speaker_onn();
+		fsm_speaker_onn(BIT(0));
 #endif
 #endif
 // ALPS05007528 end
@@ -306,7 +306,7 @@ static int mt6768_mt6358_spk_amp_event(struct snd_soc_dapm_widget *w,
 // ALPS05007528 begin
 #if defined(CONFIG_SND_SOC_DSPK_LOL_HP)
 		dev_info(card->dev, "%s(), spk_amp_audio_off()\n", __func__);
-		#if defined(CONFIG_SND_SOC_FS16XX)
+		#if defined(CONFIG_SND_SOC_FS18XX)
 		fsm_speaker_off();
 		#endif
 		#if defined(CONFIG_SND_SOC_AW87XXX)
@@ -318,7 +318,7 @@ static int mt6768_mt6358_spk_amp_event(struct snd_soc_dapm_widget *w,
 #if defined(CONFIG_SND_SOC_AW87XXX)
 		aw87xxx_set_profile(AW87XXX_LEFT_CHANNEL, (char *)aw87xxx_mode_function[AW87XXX_OFF_MODE]);
 #endif
-#ifdef CONFIG_SND_SOC_FS16XX
+#ifdef CONFIG_SND_SOC_FS18XX
 		fsm_speaker_off();
 #endif
 #endif
@@ -347,9 +347,9 @@ static int mt6768_mt6358_rcv_amp_event(struct snd_soc_dapm_widget *w,
 		/* spk amp on control */
 		if (1 == rcv_amp_mode) {
 			dev_info(card->dev, "%s(), rcv_amp_audio_drcv() mode = %d\n", __func__, rcv_amp_mode);
-			#if defined(CONFIG_SND_SOC_FS16XX)
+			#if defined(CONFIG_SND_SOC_FS18XX)
 			fsm_set_scene(15);
-			fsm_speaker_onn();
+			fsm_speaker_onn(BIT(15));
 			#endif
 			#if defined(CONFIG_SND_SOC_AW87XXX)
 			#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
@@ -360,9 +360,9 @@ static int mt6768_mt6358_rcv_amp_event(struct snd_soc_dapm_widget *w,
 			#endif
 		} else if (2 == rcv_amp_mode) {
 			dev_info(card->dev, "%s(), rcv_amp_audio_dfm() mode = %d\n", __func__, rcv_amp_mode);
-			#if defined(CONFIG_SND_SOC_FS16XX)
+			#if defined(CONFIG_SND_SOC_FS18XX)
 			fsm_set_scene(0);
-			fsm_speaker_onn();
+			fsm_speaker_onn(BIT(0));
 			#endif
 			#if defined(CONFIG_SND_SOC_AW87XXX)
 			#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
@@ -373,9 +373,9 @@ static int mt6768_mt6358_rcv_amp_event(struct snd_soc_dapm_widget *w,
 			#endif
 		} else if (3 == rcv_amp_mode) {
 			dev_info(card->dev, "%s(), rcv_amp_audio_kvoice() mode = %d\n", __func__, rcv_amp_mode);
-			#if defined(CONFIG_SND_SOC_FS16XX)
+			#if defined(CONFIG_SND_SOC_FS18XX)
 			fsm_set_scene(1);
-			fsm_speaker_onn();
+			fsm_speaker_onn(BIT(1));
 			#endif
 			#if defined(CONFIG_SND_SOC_AW87XXX)
 			#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
@@ -386,9 +386,9 @@ static int mt6768_mt6358_rcv_amp_event(struct snd_soc_dapm_widget *w,
 			#endif
 		} else {
 			dev_info(card->dev, "%s(), rcv_amp_audio_dspk() mode = %d\n", __func__, rcv_amp_mode);
-			#if defined(CONFIG_SND_SOC_FS16XX)
+			#if defined(CONFIG_SND_SOC_FS18XX)
 			fsm_set_scene(0);
-			fsm_speaker_onn();
+			fsm_speaker_onn(BIT(0));
 			#endif
 			#if defined(CONFIG_SND_SOC_AW87XXX)
 			aw87xxx_set_profile(AW87XXX_DSPK_RCV_CHANNEL, (char *)aw87xxx_mode_function[AW87XXX_MUSIC_MODE]);
@@ -398,7 +398,7 @@ static int mt6768_mt6358_rcv_amp_event(struct snd_soc_dapm_widget *w,
 	case SND_SOC_DAPM_PRE_PMD:
 		/* spk amp off control */
 		dev_info(card->dev, "%s(), rcv_amp_audio_off()\n", __func__);
-		#if defined(CONFIG_SND_SOC_FS16XX)
+		#if defined(CONFIG_SND_SOC_FS18XX)
 		fsm_speaker_off();
 		#endif
 		#if defined(CONFIG_SND_SOC_AW87XXX)
@@ -965,13 +965,8 @@ static struct snd_soc_dai_link mt6768_mt6358_dai_links[] = {
 	{
 		.name = "I2S3",
 		.cpu_dai_name = "I2S3",
-#ifdef CONFIG_SND_SOC_FS16XX
-		.codec_dai_name = "fs16xx-aif",
-		.codec_name = "fs16xx",
-#else
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
-#endif
 		.no_pcm = 1,
 		.dpcm_playback = 1,
 		.ignore_suspend = 1,
@@ -980,13 +975,8 @@ static struct snd_soc_dai_link mt6768_mt6358_dai_links[] = {
 	{
 		.name = "I2S0",
 		.cpu_dai_name = "I2S0",
-#ifdef CONFIG_SND_SOC_FS16XX
-		.codec_dai_name = "fs16xx-aif",
-		.codec_name = "fs16xx",
-#else
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
-#endif
 		.no_pcm = 1,
 		.dpcm_capture = 1,
 		.ignore_suspend = 1,

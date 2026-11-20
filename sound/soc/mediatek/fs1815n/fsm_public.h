@@ -11,6 +11,8 @@ extern "C" {
 #endif
 
 #include "fsm-dev.h"
+#include <sound/soc.h>
+#include <linux/version.h>
 
 /*
  * module: fsm_regmap
@@ -225,7 +227,13 @@ void fsm_dump(void);
 void fsm_deinit(void);
 
 void fs1815_ops(fsm_dev_t *fsm_dev);
-int fsm_add_control(struct snd_soc_component *platform);
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+#define snd_soc_codec              snd_soc_component
+#define snd_soc_add_codec_controls snd_soc_add_component_controls
+#define snd_soc_codec_get_drvdata  snd_soc_component_get_drvdata
+#endif
+void fsm_add_codec_controls(struct snd_soc_component *cmpnt);
 
 #ifdef __cplusplus
 }

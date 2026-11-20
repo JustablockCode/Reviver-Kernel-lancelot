@@ -41,10 +41,10 @@
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
 #include <linux/kthread.h>
+#include <linux/hqsysfs.h>
 #include <uapi/sound/asound.h>
 #include <sound/control.h>
 #include <sound/soc.h>
-#include <linux/hqsysfs.h>
 #include "aw87xxx.h"
 #include "aw87xxx_device.h"
 #include "aw87xxx_log.h"
@@ -218,7 +218,16 @@ static int aw87xxx_power_on(struct aw87xxx *aw87xxx, char *profile)
 	return 0;
 }
 
+int aw87xxx_dev_count(void)
+{
+	int count;
 
+	mutex_lock(&g_aw87xxx_mutex_lock);
+	count = g_aw87xxx_dev_cnt;
+	mutex_unlock(&g_aw87xxx_mutex_lock);
+	return count;
+}
+EXPORT_SYMBOL(aw87xxx_dev_count);
 
 int aw87xxx_update_profile(struct aw87xxx *aw87xxx, char *profile)
 {
@@ -263,18 +272,24 @@ char *aw87xxx_show_current_profile(int dev_index)
 {
 	struct list_head *pos = NULL;
 	struct aw87xxx *aw87xxx = NULL;
+	char *profile = NULL;
 
+	mutex_lock(&g_aw87xxx_mutex_lock);
 	list_for_each(pos, &g_aw87xxx_list) {
 		aw87xxx = list_entry(pos, struct aw87xxx, list);
 		if (aw87xxx->dev_index == dev_index) {
 			AW_DEV_LOGI(aw87xxx->dev, "current profile is [%s]",
 				aw87xxx->current_profile);
-			return aw87xxx->current_profile;
+			profile = aw87xxx->current_profile;
+			break;
 		}
 	}
+	mutex_unlock(&g_aw87xxx_mutex_lock);
 
-	AW_LOGE("not found struct aw87xxx, dev_index = [%d]", dev_index);
-	return NULL;
+	if (!profile)
+		AW_LOGE("not found struct aw87xxx, dev_index = [%d]", dev_index);
+
+	return profile;
 }
 EXPORT_SYMBOL(aw87xxx_show_current_profile);
 
@@ -282,25 +297,82 @@ int aw87xxx_set_profile(int dev_index, char *profile)
 {
 	struct list_head *pos = NULL;
 	struct aw87xxx *aw87xxx = NULL;
+	int ret = -ENODEV;
+	int found = 0;
 
 	if (!profile) {
 		AW_LOGE("profile is NULL");
 		return -EINVAL;
 	}
 
+	mutex_lock(&g_aw87xxx_mutex_lock);
 	list_for_each(pos, &g_aw87xxx_list) {
 		aw87xxx = list_entry(pos, struct aw87xxx, list);
 		if (aw87xxx->dev_index == dev_index) {
 			AW_DEV_LOGD(aw87xxx->dev, "set dev_index = %d, profile = %s",
 				dev_index, profile);
-			return aw87xxx_update_profile(aw87xxx, profile);
+			ret = aw87xxx_update_profile(aw87xxx, profile);
+			found = 1;
+			break;
 		}
 	}
+	mutex_unlock(&g_aw87xxx_mutex_lock);
 
-	AW_LOGI("struct aw87xxx not found for dev_index = [%d]", dev_index);
-	return -ENODEV;
+	if (!found)
+		AW_LOGI("struct aw87xxx not found for dev_index = [%d]", dev_index);
+
+	return ret;
 }
 EXPORT_SYMBOL(aw87xxx_set_profile);
+
+static unsigned char aw87519_audio_set_profile(const char *profile)
+{
+	struct list_head *pos = NULL;
+	struct aw87xxx *aw87xxx = NULL;
+	unsigned char ret = 2;
+
+	if (!profile)
+		return 2;
+
+	mutex_lock(&g_aw87xxx_mutex_lock);
+	list_for_each(pos, &g_aw87xxx_list) {
+		aw87xxx = list_entry(pos, struct aw87xxx, list);
+		if (aw87xxx->aw_dev.chipid != AW_DEV_CHIPID_59)
+			continue;
+
+		if (aw87xxx_update_profile(aw87xxx, (char *)profile) < 0)
+			continue;
+
+		ret = 0;
+	}
+	mutex_unlock(&g_aw87xxx_mutex_lock);
+
+	return ret;
+}
+
+unsigned char aw87519_audio_drcv(void)
+{
+	return aw87519_audio_set_profile("Receiver");
+}
+EXPORT_SYMBOL_GPL(aw87519_audio_drcv);
+
+unsigned char aw87519_audio_kspk(void)
+{
+	return aw87519_audio_set_profile("Music");
+}
+EXPORT_SYMBOL_GPL(aw87519_audio_kspk);
+
+unsigned char aw87519_audio_hvload(void)
+{
+	return aw87519_audio_set_profile("Voice");
+}
+EXPORT_SYMBOL_GPL(aw87519_audio_hvload);
+
+unsigned char aw87519_audio_off(void)
+{
+	return aw87519_audio_set_profile("Off");
+}
+EXPORT_SYMBOL_GPL(aw87519_audio_off);
 
 int aw87xxx_set_profile_by_id(int dev_index, int profile_id)
 {
@@ -321,107 +393,124 @@ EXPORT_SYMBOL(aw87xxx_set_profile_by_id);
 
 int aw87xxx_set_boost_voltage(int dev_index, int status)
 {
-	int ret = 0;
 	struct list_head *pos = NULL;
 	struct aw87xxx *aw87xxx = NULL;
 	struct aw_voltage_desc *vol_desc = NULL;
+	int ret = -EINVAL;
+	int found = 0;
 
+	mutex_lock(&g_aw87xxx_mutex_lock);
 	list_for_each(pos, &g_aw87xxx_list) {
 		aw87xxx = list_entry(pos, struct aw87xxx, list);
-		if (aw87xxx == NULL) {
-			AW_LOGE("struct aw87xxx not ready");
-			return -EINVAL;
+		if (aw87xxx->dev_index != dev_index)
+			continue;
+
+		found = 1;
+		mutex_lock(&aw87xxx->reg_lock);
+		AW_DEV_LOGD(aw87xxx->dev, "enter, set dev_index = %d, status = %d", dev_index, status);
+		if (0 == strncmp(aw87xxx->current_profile, aw87xxx->prof_off_name,
+			AW_PROFILE_STR_MAX)) {
+			AW_DEV_LOGE(aw87xxx->dev, "PA is power down, can not set voltage!");
+			ret = -EINVAL;
+			goto exit_dev;
 		}
 
-		if (aw87xxx->dev_index == dev_index) {
-			AW_DEV_LOGD(aw87xxx->dev, "enter, set dev_index = %d, status = %d", dev_index, status);
-			if (0 == strncmp(aw87xxx->current_profile, aw87xxx->prof_off_name,
-				AW_PROFILE_STR_MAX)) {
-				AW_DEV_LOGE(aw87xxx->dev, "PA is power down, can not set voltage!");
-				return -EINVAL;
-			}
-
-			vol_desc = &aw87xxx->aw_dev.vol_desc;
-			if (vol_desc->addr == AW_REG_NONE) {
-				AW_DEV_LOGI(aw87xxx->dev, "PA unsupport set boost voltage!");
-				return -EINVAL;
-			}
-			if (status == AW_VOLTAGE_HIGH) {
-				AW_DEV_LOGI(aw87xxx->dev, "set reg voltage max: 0x%02x = 0x%02x",
-					vol_desc->addr, vol_desc->vol_max);
-				ret = aw87xxx_dev_i2c_write_byte(&aw87xxx->aw_dev,
-					vol_desc->addr, vol_desc->vol_max);
-				if (ret < 0)
-					return ret;
-			} else if (status == AW_VOLTAGE_LOW) {
-				AW_DEV_LOGI(aw87xxx->dev, "set reg voltage min: 0x%02x = 0x%02x",
-					vol_desc->addr, vol_desc->vol_min);
-				ret = aw87xxx_dev_i2c_write_byte(&aw87xxx->aw_dev,
-					vol_desc->addr, vol_desc->vol_min);
-				if (ret < 0)
-					return ret;
-			} else {
-				AW_DEV_LOGE(aw87xxx->dev, "unsupport status: %d", status);
-				return -EINVAL;
-			}
-
-			return 0;
+		vol_desc = &aw87xxx->aw_dev.vol_desc;
+		if (vol_desc->addr == AW_REG_NONE) {
+			AW_DEV_LOGI(aw87xxx->dev, "PA unsupport set boost voltage!");
+			ret = -EINVAL;
+			goto exit_dev;
 		}
+		if (status == AW_VOLTAGE_HIGH) {
+			AW_DEV_LOGI(aw87xxx->dev, "set reg voltage max: 0x%02x = 0x%02x",
+				vol_desc->addr, vol_desc->vol_max);
+			ret = aw87xxx_dev_i2c_write_byte(&aw87xxx->aw_dev,
+				vol_desc->addr, vol_desc->vol_max);
+		} else if (status == AW_VOLTAGE_LOW) {
+			AW_DEV_LOGI(aw87xxx->dev, "set reg voltage min: 0x%02x = 0x%02x",
+				vol_desc->addr, vol_desc->vol_min);
+			ret = aw87xxx_dev_i2c_write_byte(&aw87xxx->aw_dev,
+				vol_desc->addr, vol_desc->vol_min);
+		} else {
+			AW_DEV_LOGE(aw87xxx->dev, "unsupport status: %d", status);
+			ret = -EINVAL;
+		}
+
+exit_dev:
+		mutex_unlock(&aw87xxx->reg_lock);
+		break;
+	}
+	mutex_unlock(&g_aw87xxx_mutex_lock);
+
+	if (!found) {
+		AW_LOGE("not found struct aw87xxx, dev_index = [%d]", dev_index);
+		return -EINVAL;
 	}
 
-	AW_LOGE("not found struct aw87xxx, dev_index = [%d]", dev_index);
-	return -EINVAL;
+	return ret < 0 ? ret : 0;
 }
 EXPORT_SYMBOL(aw87xxx_set_boost_voltage);
 
 int aw87xxx_get_boost_voltage(int dev_index, int *status)
 {
-	int ret = 0;
 	struct list_head *pos = NULL;
 	struct aw87xxx *aw87xxx = NULL;
 	uint8_t reg_voltage_val = 0;
 	struct aw_voltage_desc *vol_desc = NULL;
+	int ret = -EINVAL;
+	int found = 0;
 
+	if (!status)
+		return -EINVAL;
+
+	mutex_lock(&g_aw87xxx_mutex_lock);
 	list_for_each(pos, &g_aw87xxx_list) {
 		aw87xxx = list_entry(pos, struct aw87xxx, list);
-		if (aw87xxx == NULL) {
-			AW_LOGE("struct aw87xxx not ready");
-			return -EINVAL;
+		if (aw87xxx->dev_index != dev_index)
+			continue;
+
+		found = 1;
+		mutex_lock(&aw87xxx->reg_lock);
+		if (0 == strncmp(aw87xxx->current_profile, aw87xxx->prof_off_name,
+			AW_PROFILE_STR_MAX)) {
+			AW_DEV_LOGE(aw87xxx->dev, "PA is power down, can not get voltage!");
+			ret = -EINVAL;
+			goto exit_dev;
 		}
 
-		if (aw87xxx->dev_index == dev_index) {
-			if (0 == strncmp(aw87xxx->current_profile, aw87xxx->prof_off_name,
-				AW_PROFILE_STR_MAX)) {
-				AW_DEV_LOGE(aw87xxx->dev, "PA is power down, can not get voltage!");
-				return -EINVAL;
-			}
-
-			vol_desc = &aw87xxx->aw_dev.vol_desc;
-			if (vol_desc->addr == AW_REG_NONE) {
-				AW_DEV_LOGI(aw87xxx->dev, "PA unsupport get boost voltage!");
-				return -EINVAL;
-			}
-			ret = aw87xxx_dev_i2c_read_byte(&aw87xxx->aw_dev,
-					vol_desc->addr, &reg_voltage_val);
-				if (ret < 0)
-					return ret;
-
-			if (reg_voltage_val ==  vol_desc->vol_max) {
-				*status = AW_VOLTAGE_HIGH;
-			} else if (reg_voltage_val ==  vol_desc->vol_min) {
-				*status = AW_VOLTAGE_LOW;
-			} else {
-				AW_DEV_LOGE(aw87xxx->dev, "undefined reg val 0x%02x = 0x%02x",
-					vol_desc->addr, reg_voltage_val);
-				return -EINVAL;
-			}
-
-			return 0;
+		vol_desc = &aw87xxx->aw_dev.vol_desc;
+		if (vol_desc->addr == AW_REG_NONE) {
+			AW_DEV_LOGI(aw87xxx->dev, "PA unsupport get boost voltage!");
+			ret = -EINVAL;
+			goto exit_dev;
 		}
+		ret = aw87xxx_dev_i2c_read_byte(&aw87xxx->aw_dev,
+				vol_desc->addr, &reg_voltage_val);
+		if (ret < 0)
+			goto exit_dev;
+
+		if (reg_voltage_val == vol_desc->vol_max) {
+			*status = AW_VOLTAGE_HIGH;
+		} else if (reg_voltage_val == vol_desc->vol_min) {
+			*status = AW_VOLTAGE_LOW;
+		} else {
+			AW_DEV_LOGE(aw87xxx->dev, "undefined reg val 0x%02x = 0x%02x",
+				vol_desc->addr, reg_voltage_val);
+			ret = -EINVAL;
+		}
+
+exit_dev:
+		mutex_unlock(&aw87xxx->reg_lock);
+		break;
+	}
+	mutex_unlock(&g_aw87xxx_mutex_lock);
+
+	if (!found) {
+		AW_LOGE("not found struct aw87xxx, dev_index = [%d]", dev_index);
+		return -EINVAL;
 	}
 
-	AW_LOGE("not found struct aw87xxx, dev_index = [%d]", dev_index);
-	return -EINVAL;
+	return ret < 0 ? ret : 0;
 }
 EXPORT_SYMBOL(aw87xxx_get_boost_voltage);
 
@@ -855,22 +944,24 @@ int aw87xxx_add_codec_controls(void *codec)
 {
 	struct list_head *pos = NULL;
 	struct aw87xxx *aw87xxx = NULL;
-	int ret = -1;
+	int ret = 0;
 
+	mutex_lock(&g_aw87xxx_mutex_lock);
 	list_for_each(pos, &g_aw87xxx_list) {
 		aw87xxx = list_entry(pos, struct aw87xxx, list);
 		ret = aw87xxx_kcontrol_dynamic_create(aw87xxx, codec);
 		if (ret < 0)
-			return ret;
+			break;
 
 		if (aw87xxx->dev_index == 0) {
 			ret = aw87xxx_public_kcontrol_create(aw87xxx, codec);
 			if (ret < 0)
-				return ret;
+				break;
 		}
 	}
+	mutex_unlock(&g_aw87xxx_mutex_lock);
 
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL(aw87xxx_add_codec_controls);
 
@@ -915,13 +1006,11 @@ static int aw87xxx_try_legacy_fw(struct aw87xxx *aw87xxx)
 		ret = aw87xxx_init_default_prof(aw87xxx);
 
 	if (ret && aw87xxx->aw_dev.chipid == AW_DEV_CHIPID_59) {
-#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
 		aw87xxx_acf_profile_free(aw87xxx->dev, &aw87xxx->acf_info);
 		ret = aw87xxx_legacy_aw87519_load(aw87xxx->dev,
 			&aw87xxx->acf_info);
 		if (!ret)
 			ret = aw87xxx_init_default_prof(aw87xxx);
-#endif
 	}
 	mutex_unlock(&aw87xxx->reg_lock);
 
@@ -1279,6 +1368,7 @@ int aw87xxx_awrw_write(struct aw87xxx *aw87xxx,
 	ret = i2c_master_send(aw87xxx->aw_dev.i2c, data_buf, buf_len);
 	if (ret < 0) {
 		AW_DEV_LOGE(aw87xxx->dev, "write failed");
+		mutex_unlock(&aw87xxx->reg_lock);
 		vfree(data_buf);
 		data_buf = NULL;
 		return -EFAULT;
@@ -1488,16 +1578,20 @@ int aw87xxx_dtsi_dev_index_check(struct aw87xxx *cur_aw87xxx)
 {
 	struct list_head *pos = NULL;
 	struct aw87xxx *list_aw87xxx = NULL;
+	int ret = 0;
 
+	mutex_lock(&g_aw87xxx_mutex_lock);
 	list_for_each(pos, &g_aw87xxx_list) {
 		list_aw87xxx = list_entry(pos, struct aw87xxx, list);
 		if (list_aw87xxx->dev_index == cur_aw87xxx->dev_index) {
 			AW_DEV_LOGE(cur_aw87xxx->dev, "dev_index has already existing,check failed");
-			return -EINVAL;
+			ret = -EINVAL;
+			break;
 		}
 	}
+	mutex_unlock(&g_aw87xxx_mutex_lock);
 
-	return 0;
+	return ret;
 }
 
 static int aw87xxx_dtsi_parse(struct aw87xxx *aw87xxx,
@@ -1647,15 +1741,22 @@ static int aw87xxx_i2c_probe(struct i2c_client *client,
 	list_add(&aw87xxx->list, &g_aw87xxx_list);
 	mutex_unlock(&g_aw87xxx_mutex_lock);
 
-	hq_regiser_hw_info(HWID_AUDIO, "awinic");
-
 	AW_DEV_LOGI(aw87xxx->dev, "succeed, dev_index=[%d], g_aw87xxx_dev_cnt= [%d]",
 			aw87xxx->dev_index, g_aw87xxx_dev_cnt);
+
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	hq_regiser_hw_info(HWID_AUDIO, "awinic");
+#endif
 
 	return 0;
 
 exit_device_init_failed:
 	aw87xxx_dev_hw_pwr_ctrl(&aw87xxx->aw_dev, false);
+#ifdef CONFIG_TARGET_PRODUCT_SELENE
+	if (gpio_is_valid(aw87xxx->aw_dev.rst_gpio))
+		gpio_set_value_cansleep(aw87xxx->aw_dev.rst_gpio,
+					AW_GPIO_HIGHT_LEVEL);
+#endif
 exit_dtsi_parse_failed:
 	AW_DEV_LOGE(aw87xxx->dev, "pa init failed");
 	if (gpio_is_valid(aw87xxx->aw_dev.rst_gpio))
@@ -1675,15 +1776,15 @@ static int aw87xxx_i2c_remove(struct i2c_client *client)
 		devm_gpio_free(&client->dev, aw87xxx->aw_dev.rst_gpio);
 
 	aw87xxx_monitor_exit(&aw87xxx->monitor);
+	cancel_delayed_work_sync(&aw87xxx->fw_load_work);
 
 	/*rm attr node*/
 	sysfs_remove_group(&aw87xxx->dev->kobj, &aw87xxx_attribute_group);
 
-	aw87xxx_fw_cfg_free(aw87xxx);
-
 	mutex_lock(&g_aw87xxx_mutex_lock);
 	g_aw87xxx_dev_cnt--;
 	list_del(&aw87xxx->list);
+	aw87xxx_fw_cfg_free(aw87xxx);
 	mutex_unlock(&g_aw87xxx_mutex_lock);
 
 	devm_kfree(&client->dev, aw87xxx);

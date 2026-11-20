@@ -176,10 +176,8 @@ void aw87xxx_acf_profile_free(struct device *dev,
 		struct acf_bin_info *acf_info);
 int aw87xxx_acf_parse(struct device *dev, struct acf_bin_info *acf_info);
 int aw87xxx_legacy_bin_load(struct device *dev, struct acf_bin_info *acf_info);
-#if defined(CONFIG_TARGET_PRODUCT_LANCELOT)
 int aw87xxx_legacy_aw87519_load(struct device *dev,
 		struct acf_bin_info *acf_info);
-#endif
 struct aw_prof_desc *aw87xxx_acf_get_prof_desc_form_name(struct device *dev,
 			struct acf_bin_info *acf_info, char *profile_name);
 int aw87xxx_acf_get_prof_index_form_name(struct device *dev,

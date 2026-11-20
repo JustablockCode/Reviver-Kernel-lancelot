@@ -57,4 +57,3 @@ config OCP96011_I2C
 	  microphone signal.
 
 source "drivers/misc/mediatek/typec/tcpc/Kconfig"
-source "drivers/misc/mediatek/typec/fusb302b/Kconfig"

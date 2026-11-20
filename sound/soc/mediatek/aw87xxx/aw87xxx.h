@@ -115,6 +115,7 @@ struct aw87xxx {
 	struct aw_monitor monitor;
 };
 
+int aw87xxx_dev_count(void);
 int aw87xxx_update_profile(struct aw87xxx *aw87xxx, char *profile);
 int aw87xxx_update_profile_esd(struct aw87xxx *aw87xxx, char *profile);
 #endif
