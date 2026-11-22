@@ -455,8 +455,18 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	if (enable_irq_wake(kp_irqnr) < 0)
-		kpd_notice("irq %d enable irq wake fail\n", kp_irqnr);
+	/* Expose wakeup capability through the device power core as well as
+	 * the IRQ controller. The keypad IRQ must only be armed once.
+	 */
+	err = device_init_wakeup(&pdev->dev, true);
+	if (err)
+		kpd_notice("kpd: device_init_wakeup failed: %d\n", err);
+
+	err = enable_irq_wake(kp_irqnr);
+	if (err)
+		kpd_notice("kpd: IRQ %d enable_irq_wake failed: %d\n", kp_irqnr, err);
+	else
+		kpd_info("kpd: IRQ %d registered as a system wake source\n", kp_irqnr);
 
 #ifdef CONFIG_MTK_MRDUMP_KEY
 	mt_eint_register();
