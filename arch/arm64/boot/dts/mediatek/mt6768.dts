@@ -862,6 +862,7 @@ firmware_class.path=/vendor/firmware";
 
 	keypad: kp@10010000 {
 		compatible = "mediatek,kp";
+		wakeup-source;
 		reg = <0 0x10010000 0 0x1000>;
 		interrupts = <GIC_SPI 73 IRQ_TYPE_EDGE_FALLING>;
 		clocks = <&clk26m>;

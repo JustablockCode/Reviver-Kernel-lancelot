@@ -53,6 +53,7 @@
 struct mtk_keypad {
 	struct input_dev *input_dev;
 	struct wakeup_source *suspend_lock;
+	bool irq_wake_enabled;
 	struct tasklet_struct tasklet;
 	struct clk *clk;
 	void __iomem *base;
@@ -305,7 +306,22 @@ static int kpd_pdrv_probe(struct platform_device *pdev)
 		goto err_irq;
 	}
 
-	pr_info("kpd_probe OK.\n");
+	/* Permit the keypad interrupt to wake the SoC from suspend.
+	 * A wakeup_source alone only delays suspend AFTER an IRQ is handled.
+	 */
+	err = device_init_wakeup(&pdev->dev, true);
+	if (err)
+		dev_warn(&pdev->dev, "kpd: device_init_wakeup failed: %d\n", err);
+
+	err = enable_irq_wake(keypad->irqnr);
+	if (err)
+		dev_warn(&pdev->dev, "kpd: enable_irq_wake failed: %d\n", err);
+	else
+		keypad->irq_wake_enabled = true;
+
+	platform_set_drvdata(pdev, keypad);
+	pr_info("kpd_probe OK (irq wake %s).\n",
+		keypad->irq_wake_enabled ? "enabled" : "unavailable");
 
 	return 0;
 
@@ -326,6 +342,9 @@ static int kpd_pdrv_remove(struct platform_device *pdev)
 {
 	struct mtk_keypad *keypad = platform_get_drvdata(pdev);
 
+	if (keypad->irq_wake_enabled)
+		disable_irq_wake(keypad->irqnr);
+	device_init_wakeup(&pdev->dev, false);
 	tasklet_kill(&keypad->tasklet);
 	wakeup_source_unregister(keypad->suspend_lock);
 	input_unregister_device(keypad->input_dev);
